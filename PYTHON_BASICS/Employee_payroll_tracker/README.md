@@ -3,7 +3,7 @@
 A Python CLI application that collects employee data interactively, computes
 monthly gross pay, applies Rwanda PAYE tax, and prints individual payslips
 plus a full payroll summary. Built with OOP, abstract base classes, property
-decorators, and modular design.
+decorators, centralised logging, and modular design.
 
 ## Project Structure
 
@@ -13,9 +13,14 @@ Employee_payroll_tracker/
 ├── employee.py           # Abstract Employee base class + subclasses
 ├── payroll.py            # Rwanda PAYE tax logic, payslip generation
 ├── utils.py              # Shared formatting helpers
+├── logger.py             # Centralised logging configuration
+├── tests/
+│   └── test_payroll.py   # 39 unit tests (pytest)
+├── logs/
+│   └── payroll.log       # Rotating log file (auto-generated, git-ignored)
 ├── pyproject.toml        # Poetry project config and dependencies
 ├── poetry.lock           # Locked dependency versions (auto-generated)
-└── .gitignore            # Excludes __pycache__ and .pytest_cache
+└── .gitignore            # Excludes __pycache__, .pytest_cache, logs/
 ```
 
 ## Setup
@@ -104,14 +109,36 @@ progressive brackets. All employee types — including interns — are subject t
 
 Each bracket taxes only the income that falls within its band (no cliff effect).
 
-Example — monthly gross of RWF 150,000:
+Example — monthly gross of RWF 400,000:
 - RWF 0 on first 30,000 (0%)
 - RWF 14,000 on 30,001–100,000 (20%)
-- RWF 15,000 on 100,001–150,000 (30%)
-- **Total tax = RWF 29,000**
+- RWF 90,000 on 100,001–400,000 (30%)
+- **Total tax = RWF 104,000**
+
+## Logging
+
+All activity is written to `logs/payroll.log` automatically.
+The console only shows WARNING-level messages and above to keep CLI output clean.
+
+| Level | Where logged | Example |
+|---|---|---|
+| DEBUG | File only | Employee created, tax calculation result |
+| INFO | File only | Employee added, payroll computed, session start/end |
+| WARNING | File + console | Failed employee addition (bad input) |
+| ERROR | File + console | Invalid property value (salary, bonus, hours) |
+
+Log format:
+```
+2026-07-04 11:50:45 | INFO     | payroll | Payroll | Nziza Paul (FT001) | gross=400000.00 tax=104000.00 net=296000.00
+```
+
+The log file rotates at 1 MB and keeps 3 backups. The `logs/` folder is git-ignored.
 
 ## Running Tests
 
 ```bash
-poetry run pytest
+poetry run pytest tests/ -v
 ```
+
+39 tests covering employee models, Rwanda PAYE tax brackets, payroll
+computation, and formatting helpers.
