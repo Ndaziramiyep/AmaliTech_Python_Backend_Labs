@@ -191,7 +191,7 @@ class Intern(Employee):
     """
     Intern receiving a fixed monthly stipend.
 
-    Interns are tax-exempt — no income tax is deducted.
+    Interns are subject to the same PAYE tax rules as other employees.
     Gross pay = stipend (unchanged)
     """
 
@@ -218,4 +218,4 @@ class Intern(Employee):
 
     @property
     def is_tax_exempt(self) -> bool:
-        return True
+        return False

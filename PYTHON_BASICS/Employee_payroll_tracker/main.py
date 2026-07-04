@@ -109,13 +109,15 @@ def collect_employees() -> list[Employee]:
         print("\n  Select employee type:")
         for key, (label, _) in _ROLE_MAP.items():
             print(f"    [{key}] {label}")
-        print("    [0] Done — generate payroll")
+        # Only show the exit option once at least one employee has been added
+        if employees:
+            print("    [0] Done — generate payroll")
 
         choice = input("\n  Your choice: ").strip()
 
         if choice == "0":
             if not employees:
-                print("  ! Add at least one employee first.")
+                print("  ! Invalid choice. Enter 1, 2, or 3.")
             else:
                 break
         elif choice in _ROLE_MAP:

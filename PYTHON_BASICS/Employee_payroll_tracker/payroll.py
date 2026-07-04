@@ -3,49 +3,50 @@ payroll.py
 Core payroll logic: progressive tax calculation, per-employee salary
 processing, payslip generation, and batch payroll processing.
 
-Tax model:
-    Income tax is computed on an annualised basis (monthly gross × 12)
-    using progressive brackets, then divided back to a monthly figure.
-    Employees whose is_tax_exempt property returns True pay no tax.
+Tax model (Rwanda PAYE — monthly):
+    Tax is computed directly on the monthly gross using Rwanda Revenue
+    Authority (RRA) progressive brackets. No annualisation is needed.
+    All employee types, including interns, are subject to PAYE.
 """
 
 from employee import Employee
 from utils import format_currency, divider
 
 
-# Progressive annual income-tax brackets: (lower, upper, rate)
-# Each bracket taxes only the income that falls within its band.
+# Rwanda PAYE monthly brackets (RRA): (lower, upper, rate)
+# Applied directly to monthly gross — no annualisation required.
 _TAX_BRACKETS: list[tuple[float, float, float]] = [
-    (0,       5_000,        0.00),
-    (5_000,   20_000,       0.10),
-    (20_000,  40_000,       0.20),
-    (40_000,  float("inf"), 0.30),
+    (0,        30_000,       0.00),
+    (30_000,   100_000,      0.20),
+    (100_000,  float("inf"), 0.30),
 ]
 
 
-def apply_tax(annual_gross: float) -> float:
+def apply_tax(monthly_gross: float) -> float:
     """
-    Compute total annual income tax using progressive brackets.
+    Compute monthly PAYE tax using Rwanda's progressive brackets.
 
     Each bracket taxes only the slice of income within its band, so a
     higher bracket never reduces tax on lower income (no cliff effect).
 
     Args:
-        annual_gross: Annualised gross salary (monthly gross × 12).
+        monthly_gross: Monthly gross salary in RWF.
 
     Returns:
-        Total annual tax owed as a float.
+        Monthly tax owed as a float.
 
     Example:
-        apply_tax(66_000)
-        → $0 on first $5k + $1,500 on $5k–$20k + $4,000 on $20k–$40k
-          + $7,800 on $40k–$66k = $13,300
+        apply_tax(150_000)
+        → RWF 0 on first 30k (0%)
+          + RWF 14,000 on 30k–100k (20%)
+          + RWF 15,000 on 100k–150k (30%)
+          = RWF 29,000
     """
     tax = 0.0
     for lower, upper, rate in _TAX_BRACKETS:
-        if annual_gross <= lower:
+        if monthly_gross <= lower:
             break  # income doesn't reach this bracket — stop early
-        taxable_in_band = min(annual_gross, upper) - lower
+        taxable_in_band = min(monthly_gross, upper) - lower
         tax += taxable_in_band * rate
     return tax
 
@@ -70,11 +71,8 @@ def compute_payroll_details(employee: Employee) -> dict:
     """
     gross_monthly = employee.calculate_salary()
 
-    if employee.is_tax_exempt:
-        tax_monthly = 0.0
-    else:
-        annual_tax = apply_tax(gross_monthly * 12)
-        tax_monthly = annual_tax / 12
+    # All employees (including interns) are subject to Rwanda PAYE
+    tax_monthly = apply_tax(gross_monthly)
 
     net_monthly = gross_monthly - tax_monthly
 
