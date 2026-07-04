@@ -1,47 +1,93 @@
 from vehicles import Car, Truck, Bike
 from rental_system import RentalSystem
 
+system = RentalSystem()
 
-def main():
-    system = RentalSystem()
 
-    # Populate fleet
-    system.add_vehicle(Car("C001", "Toyota", "Camry", 2022, base_rate=40.0, num_passengers=5))
-    system.add_vehicle(Car("C002", "Honda", "Civic", 2021, base_rate=35.0, num_passengers=4))
-    system.add_vehicle(Truck("T001", "Ford", "F-150", 2020, base_rate=70.0, payload_tons=1.5))
-    system.add_vehicle(Truck("T002", "Chevy", "Silverado", 2023, base_rate=80.0, payload_tons=2.0))
-    system.add_vehicle(Bike("B001", "Yamaha", "MT-07", 2022, base_rate=25.0, engine_cc=689))
-    system.add_vehicle(Bike("B002", "Honda", "CBR300R", 2021, base_rate=20.0, engine_cc=286))
+def add_vehicle():
+    print("\nVehicle type: 1) Car  2) Truck  3) Bike")
+    choice = input("Choose: ").strip()
+    vid = input("Vehicle ID: ").strip()
+    make = input("Make: ").strip()
+    model = input("Model: ").strip()
+    year = int(input("Year: ").strip())
+    rate = float(input("Base rate ($/day): ").strip())
 
-    system.display_availability()
+    if choice == "1":
+        passengers = int(input("Number of passengers: ").strip())
+        system.add_vehicle(Car(vid, make, model, year, rate, passengers))
+    elif choice == "2":
+        payload = float(input("Payload capacity (tons): ").strip())
+        system.add_vehicle(Truck(vid, make, model, year, rate, payload))
+    elif choice == "3":
+        cc = int(input("Engine size (cc): ").strip())
+        system.add_vehicle(Bike(vid, make, model, year, rate, cc))
+    else:
+        print("Invalid choice.")
+        return
+    print("Vehicle added successfully.")
 
-    # Rent some vehicles
-    r1 = system.rent_vehicle("C001", days=3)
-    r2 = system.rent_vehicle("T001", days=5)
-    r3 = system.rent_vehicle("B001", days=2)
 
-    system.display_availability()
-
-    # Return a vehicle
-    system.return_vehicle(r1)
-
-    # Demonstrate error handling
+def rent_vehicle():
+    vid = input("\nEnter Vehicle ID to rent: ").strip()
+    days = int(input("Number of days: ").strip())
     try:
-        system.rent_vehicle("C001", days=1)  # just returned, should succeed
-        system.rent_vehicle("T001", days=1)  # still rented, should fail
-    except RuntimeError as e:
+        system.rent_vehicle(vid, days)
+    except (ValueError, RuntimeError) as e:
         print(f"Error: {e}")
 
-    # Update base rate via property
-    fleet_car = system._fleet["C002"]
-    fleet_car.base_rate = 38.0
-    print(f"\nUpdated base rate for C002: ${fleet_car.base_rate:.2f}/day")
 
-    system.display_availability()
+def return_vehicle():
+    rid = input("\nEnter Rental ID to return: ").strip()
+    try:
+        system.return_vehicle(rid)
+    except ValueError as e:
+        print(f"Error: {e}")
 
-    # Return remaining rentals
-    system.return_vehicle(r2)
-    system.return_vehicle(r3)
+
+def update_rate():
+    vid = input("\nEnter Vehicle ID to update rate: ").strip()
+    vehicle = system._fleet.get(vid)
+    if vehicle is None:
+        print(f"No vehicle with ID '{vid}' found.")
+        return
+    try:
+        new_rate = float(input("New base rate ($/day): ").strip())
+        vehicle.base_rate = new_rate
+        print(f"Base rate updated to ${vehicle.base_rate:.2f}/day.")
+    except ValueError as e:
+        print(f"Error: {e}")
+
+
+MENU = """
+=== Vehicle Rental System ===
+1) Add vehicle
+2) Show availability
+3) Rent a vehicle
+4) Return a vehicle
+5) Update vehicle base rate
+6) Exit
+"""
+
+def main():
+    while True:
+        print(MENU)
+        choice = input("Select option: ").strip()
+        if choice == "1":
+            add_vehicle()
+        elif choice == "2":
+            system.display_availability()
+        elif choice == "3":
+            rent_vehicle()
+        elif choice == "4":
+            return_vehicle()
+        elif choice == "5":
+            update_rate()
+        elif choice == "6":
+            print("Goodbye!")
+            break
+        else:
+            print("Invalid option, try again.")
 
 
 if __name__ == "__main__":
