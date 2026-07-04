@@ -1,0 +1,17 @@
+2026-07-05 01:53:40 [DEBUG] rental_system: RentalSystem initialised.
+2026-07-05 01:53:40 [DEBUG] vehicles.base: Vehicle created: [C001] 2022 Toyota Camry — Available
+2026-07-05 01:53:40 [INFO] rental_system: Vehicle added to fleet: [C001] 2022 Toyota Camry — Available
+2026-07-05 01:53:40 [DEBUG] vehicles.base: Vehicle created: [T001] 2020 Ford F-150 — Available
+2026-07-05 01:53:40 [INFO] rental_system: Vehicle added to fleet: [T001] 2020 Ford F-150 — Available
+2026-07-05 01:53:40 [DEBUG] vehicles.base: Vehicle created: [B001] 2022 Yamaha MT-07 — Available
+2026-07-05 01:53:40 [INFO] rental_system: Vehicle added to fleet: [B001] 2022 Yamaha MT-07 — Available
+2026-07-05 01:53:40 [DEBUG] rental_system: Fleet availability displayed (3 vehicles).
+2026-07-05 01:53:40 [INFO] vehicles.base: Vehicle rented: C001
+2026-07-05 01:53:40 [INFO] rental_system: Rental created: R0001 | vehicle=C001 | days=3 | cost=$135.00
+2026-07-05 01:53:40 [INFO] vehicles.base: Vehicle rented: T001
+2026-07-05 01:53:40 [INFO] rental_system: Rental created: R0002 | vehicle=T001 | days=5 | cost=$425.00
+2026-07-05 01:53:40 [INFO] vehicles.base: Vehicle returned: C001
+2026-07-05 01:53:40 [INFO] rental_system: Rental closed: R0001 | vehicle=C001 | days=3
+2026-07-05 01:53:40 [DEBUG] vehicles.base: Vehicle created: [C001] 2021 Honda Civic — Available
+2026-07-05 01:53:40 [WARNING] rental_system: Duplicate vehicle ID rejected: C001
+2026-07-05 01:53:40 [WARNING] rental_system: Return attempted for unknown rental ID: R9999
