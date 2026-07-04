@@ -1,72 +1,113 @@
 """
 main.py
-Entry point for the Employee Payroll Tracker CLI.
+CLI entry point for the Employee Payroll Tracker.
+
+Flow:
+    1. collect_employees() — interactive loop; builds the employee list.
+    2. print_all_payslips() — prints one formatted payslip per employee.
+    3. process_payroll()    — computes payroll dicts for all employees.
+    4. print_summary()      — prints the tabular summary with totals.
 """
 
-from employee import FullTimeEmployee, ContractEmployee, Intern
+from employee import Employee, FullTimeEmployee, ContractEmployee, Intern
 from payroll import generate_payslip, process_payroll
-from utils import format_currency, divider
+from utils import format_currency, divider, format_header
 
+
+# Maps menu keys to (display label, factory function) pairs.
+# Adding a new employee type only requires one new entry here.
+_ROLE_MAP: dict[str, tuple[str, callable]] = {
+    "1": ("Full-Time Employee", None),  # factories assigned below
+    "2": ("Contract Employee",  None),
+    "3": ("Intern",             None),
+}
+
+
+# ------------------------------------------------------------------
+# Input helpers
+# ------------------------------------------------------------------
 
 def prompt_float(label: str, min_val: float = 0.0) -> float:
-    """Prompt until a valid float above min_val is entered."""
+    """
+    Prompt the user for a float value, repeating until valid input is given.
+
+    Args:
+        label:   Text shown in the prompt.
+        min_val: Minimum acceptable value (inclusive).
+
+    Returns:
+        A validated float >= min_val.
+    """
     while True:
         try:
             value = float(input(f"  {label}: ").strip())
             if value < min_val:
-                print(f"  X Value must be >= {min_val}. Try again.")
+                print(f"  ! Value must be >= {min_val:.2f}. Try again.")
             else:
                 return value
         except ValueError:
-            print("  X Invalid number. Try again.")
+            print("  ! Invalid number. Try again.")
 
 
-def add_full_time() -> FullTimeEmployee:
-    """Collect data and return a FullTimeEmployee instance."""
+# ------------------------------------------------------------------
+# Employee factory functions
+# ------------------------------------------------------------------
+
+def _add_full_time() -> FullTimeEmployee:
+    """Collect input and return a new FullTimeEmployee instance."""
     print("\n  -- Full-Time Employee --")
-    emp_id = input("  Employee ID : ").strip()
-    name   = input("  Name        : ").strip()
-    salary = prompt_float("Base Salary  ", min_val=0.01)
+    emp_id = input("  Employee ID  : ").strip()
+    name   = input("  Name         : ").strip()
+    salary = prompt_float("Base Salary   ", min_val=0.01)
     bonus  = prompt_float("Bonus (0 if none)", min_val=0.0)
     return FullTimeEmployee(emp_id, name, salary, bonus)
 
 
-def add_contract() -> ContractEmployee:
-    """Collect data and return a ContractEmployee instance."""
+def _add_contract() -> ContractEmployee:
+    """Collect input and return a new ContractEmployee instance."""
     print("\n  -- Contract Employee --")
-    emp_id = input("  Employee ID : ").strip()
-    name   = input("  Name        : ").strip()
-    rate   = prompt_float("Hourly Rate  ", min_val=0.01)
-    hours  = prompt_float("Hours Worked ", min_val=0.0)
+    emp_id = input("  Employee ID  : ").strip()
+    name   = input("  Name         : ").strip()
+    rate   = prompt_float("Hourly Rate   ", min_val=0.01)
+    hours  = prompt_float("Hours Worked  ", min_val=0.0)
     return ContractEmployee(emp_id, name, rate, hours)
 
 
-def add_intern() -> Intern:
-    """Collect data and return an Intern instance."""
+def _add_intern() -> Intern:
+    """Collect input and return a new Intern instance."""
     print("\n  -- Intern --")
-    emp_id  = input("  Employee ID : ").strip()
-    name    = input("  Name        : ").strip()
-    stipend = prompt_float("Stipend      ", min_val=0.01)
+    emp_id  = input("  Employee ID  : ").strip()
+    name    = input("  Name         : ").strip()
+    stipend = prompt_float("Stipend       ", min_val=0.01)
     return Intern(emp_id, name, stipend)
 
 
-ROLE_MAP = {
-    "1": ("Full-Time Employee", add_full_time),
-    "2": ("Contract Employee",  add_contract),
-    "3": ("Intern",             add_intern),
-}
+# Assign factory functions now that they are defined
+_ROLE_MAP["1"] = ("Full-Time Employee", _add_full_time)
+_ROLE_MAP["2"] = ("Contract Employee",  _add_contract)
+_ROLE_MAP["3"] = ("Intern",             _add_intern)
 
 
-def collect_employees() -> list:
-    """Interactive loop to collect one or more employees from the user."""
-    employees = []
-    print("\n" + "=" * 40)
-    print("    EMPLOYEE PAYROLL TRACKER")
-    print("=" * 40)
+# ------------------------------------------------------------------
+# Collection loop
+# ------------------------------------------------------------------
+
+def collect_employees() -> list[Employee]:
+    """
+    Run the interactive menu loop to collect employee data from the user.
+
+    Continues until the user selects '0' (done) with at least one
+    employee already added.
+
+    Returns:
+        List of Employee subclass instances entered by the user.
+    """
+    employees: list[Employee] = []
+    print(format_header("EMPLOYEE PAYROLL TRACKER"))
 
     while True:
         print("\n  Select employee type:")
-        for key, (label, _) in ROLE_MAP.items():
+        for key, (label, _) in _ROLE_MAP.items():
             print(f"    [{key}] {label}")
         print("    [0] Done — generate payroll")
 
@@ -74,56 +115,81 @@ def collect_employees() -> list:
 
         if choice == "0":
             if not employees:
-                print("  X Add at least one employee first.")
+                print("  ! Add at least one employee first.")
             else:
                 break
-        elif choice in ROLE_MAP:
+        elif choice in _ROLE_MAP:
             try:
-                emp = ROLE_MAP[choice][1]()
+                emp = _ROLE_MAP[choice][1]()
                 employees.append(emp)
                 print(f"\n  + {emp.name} added successfully.")
-            except ValueError as e:
-                print(f"  X Error: {e}")
+            except ValueError as exc:
+                print(f"  ! Error: {exc}")
         else:
-            print("  X Invalid choice. Enter 1, 2, 3, or 0.")
+            print("  ! Invalid choice. Enter 1, 2, 3, or 0.")
 
     return employees
 
 
-def print_all_payslips(employees: list):
-    """Print individual payslips for every employee."""
-    print("\n" + "=" * 40)
-    print("           PAYSLIPS")
-    print("=" * 40)
+# ------------------------------------------------------------------
+# Output functions
+# ------------------------------------------------------------------
+
+def print_all_payslips(employees: list[Employee]) -> None:
+    """
+    Print a formatted payslip for every employee in the list.
+
+    Args:
+        employees: List of Employee instances to print payslips for.
+    """
+    print("\n" + format_header("PAYSLIPS"))
     for emp in employees:
         print(generate_payslip(emp))
 
 
-def print_summary(payroll_data: list[dict]):
-    """Print a tabular payroll summary and company totals."""
-    print("\n" + divider(60, "="))
-    print(f"  {'ID':<8} {'Name':<18} {'Role':<20} {'Net Pay':>10}")
-    print(divider(60, "="))
+def print_summary(payroll_data: list[dict]) -> None:
+    """
+    Print a tabular payroll summary followed by company-wide totals.
 
-    total_gross = total_tax = total_net = 0.0
+    Args:
+        payroll_data: List of payroll detail dicts from process_payroll().
+    """
+    col_width = 62
 
-    for d in payroll_data:
-        print(f"  {d['emp_id']:<8} {d['name']:<18} {d['role']:<20} "
-              f"{format_currency(d['net']):>10}")
-        total_gross += d["gross"]
-        total_tax   += d["tax"]
-        total_net   += d["net"]
+    print("\n" + divider(col_width, "="))
+    print(f"  {'ID':<8} {'Name':<18} {'Role':<22} {'Net Pay':>10}")
+    print(divider(col_width, "="))
 
-    print(divider(60, "-"))
-    print(f"  {'TOTALS':<47} {format_currency(total_net):>10}")
+    # Accumulate totals while printing each row
+    total_gross, total_tax, total_net = 0.0, 0.0, 0.0
+
+    for record in payroll_data:
+        print(
+            f"  {record['emp_id']:<8} {record['name']:<18} "
+            f"{record['role']:<22} {format_currency(record['net']):>10}"
+        )
+        total_gross += record["gross"]
+        total_tax   += record["tax"]
+        total_net   += record["net"]
+
+    print(divider(col_width, "-"))
+    print(f"  {'TOTALS':<49} {format_currency(total_net):>10}")
     print(f"  Total Gross : {format_currency(total_gross)}")
     print(f"  Total Tax   : {format_currency(total_tax)}")
     print(f"  Total Net   : {format_currency(total_net)}")
-    print(divider(60, "="))
+    print(divider(col_width, "="))
 
 
-def main():
-    employees = collect_employees()
+# ------------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------------
+
+def main() -> None:
+    """
+    Orchestrate the full payroll tracker workflow:
+        collect → payslips → process → summary.
+    """
+    employees    = collect_employees()
     print_all_payslips(employees)
     payroll_data = process_payroll(employees)
     print_summary(payroll_data)
