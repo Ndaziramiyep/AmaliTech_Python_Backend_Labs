@@ -1,0 +1,19 @@
+[tool.poetry]
+package-mode = false
+
+[project]
+name = "employee-payroll-tracker"
+version = "0.1.0"
+description = "payroll tracker"
+authors = [
+    {name = "yes"}
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pytest (>=9.1.1,<10.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
