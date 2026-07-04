@@ -1,5 +1,0 @@
-# Employee Payroll Tracker — Python 3.11+
-# No third-party runtime dependencies required.
-# Dev / testing tools listed below.
-
-pytest>=7.4

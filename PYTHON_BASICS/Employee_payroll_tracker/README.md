@@ -6,30 +6,23 @@ Contract Employees, and Interns using OOP, property decorators, and modular desi
 ## Project Structure
 
 ```
-PYTHON_BASICS/
-├── main.py        # CLI entry point
-├── employee.py    # Employee base class + subclasses
-├── payroll.py     # Salary, tax, and payslip logic
-├── utils.py       # Formatting helpers
-└── requirements.txt
+Employee_payroll_tracker/
+├── main.py          # CLI entry point
+├── employee.py      # Employee base class + subclasses
+├── payroll.py       # Salary, tax, and payslip logic
+├── utils.py         # Formatting helpers
+├── pyproject.toml
+└── poetry.lock
 ```
 
 ## Setup
 
 ```bash
-# 1. Create and activate a virtual environment
-python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # macOS / Linux
+# Install dependencies
+poetry install
 
-# 2. Install dev dependencies
-pip install -r requirements.txt
-```
-
-## Usage
-
-```bash
-python main.py
+# Run the app
+poetry run python main.py
 ```
 
 ## Sample Output
@@ -84,5 +77,5 @@ Interns are **tax-exempt**.
 ## Running Tests
 
 ```bash
-pytest
+poetry run pytest
 ```
