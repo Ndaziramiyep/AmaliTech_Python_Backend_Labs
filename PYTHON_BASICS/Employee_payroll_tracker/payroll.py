@@ -11,6 +11,9 @@ Tax model (Rwanda PAYE — monthly):
 
 from employee import Employee
 from utils import format_currency, divider
+from logger import get_logger
+
+_log = get_logger(__name__)
 
 
 # Rwanda PAYE monthly brackets (RRA): (lower, upper, rate)
@@ -48,6 +51,7 @@ def apply_tax(monthly_gross: float) -> float:
             break  # income doesn't reach this bracket — stop early
         taxable_in_band = min(monthly_gross, upper) - lower
         tax += taxable_in_band * rate
+    _log.debug("apply_tax(%.2f) = %.2f", monthly_gross, tax)
     return tax
 
 
@@ -75,6 +79,11 @@ def compute_payroll_details(employee: Employee) -> dict:
     tax_monthly = apply_tax(gross_monthly)
 
     net_monthly = gross_monthly - tax_monthly
+
+    _log.info(
+        "Payroll | %s (%s) | gross=%.2f tax=%.2f net=%.2f",
+        employee.name, employee.emp_id, gross_monthly, tax_monthly, net_monthly,
+    )
 
     return {
         "emp_id": employee.emp_id,

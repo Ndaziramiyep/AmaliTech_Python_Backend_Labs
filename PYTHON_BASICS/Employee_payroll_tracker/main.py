@@ -12,6 +12,9 @@ Flow:
 from employee import Employee, FullTimeEmployee, ContractEmployee, Intern
 from payroll import generate_payslip, process_payroll
 from utils import format_currency, divider, format_header
+from logger import get_logger
+
+_log = get_logger(__name__)
 
 
 # Maps menu keys to (display label, factory function) pairs.
@@ -170,10 +173,13 @@ def collect_employees() -> list[Employee]:
                 emp = _ROLE_MAP[choice][1](existing_ids)
                 employees.append(emp)
                 existing_ids.add(emp.emp_id)  # register ID immediately
+                _log.info("Employee added: %s (%s) as %s", emp.name, emp.emp_id, emp.role())
                 print(f"\n  + {emp.name} ({emp.emp_id}) added successfully.")
             except ValueError as exc:
+                _log.warning("Failed to add employee: %s", exc)
                 print(f"  ! Error: {exc}")
         else:
+            _log.debug("Invalid menu choice entered: %r", choice)
             print("  ! Invalid choice. Enter 1, 2, or 3.")
 
     return employees
@@ -237,10 +243,13 @@ def main() -> None:
     Orchestrate the full payroll tracker workflow:
         collect → payslips → process → summary.
     """
+    _log.info("=== Payroll session started ===")
     employees    = collect_employees()
+    _log.info("Total employees collected: %d", len(employees))
     print_all_payslips(employees)
     payroll_data = process_payroll(employees)
     print_summary(payroll_data)
+    _log.info("=== Payroll session completed ===")
 
 
 if __name__ == "__main__":

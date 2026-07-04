@@ -10,6 +10,9 @@ Design:
 """
 
 from abc import ABC, abstractmethod
+from logger import get_logger
+
+_log = get_logger(__name__)
 
 
 class Employee(ABC):
@@ -34,6 +37,7 @@ class Employee(ABC):
         self.emp_id = emp_id
         self.name = name
         self.base_salary = base_salary  # validated via setter
+        _log.debug("Created %s: id=%s, name=%s", self.__class__.__name__, emp_id, name)
 
     # ------------------------------------------------------------------
     # Validated property
@@ -47,6 +51,7 @@ class Employee(ABC):
     @base_salary.setter
     def base_salary(self, value: float) -> None:
         if value <= 0:
+            _log.error("Invalid base_salary=%.2f for employee", value)
             raise ValueError(f"base_salary must be > 0, got {value}")
         self._base_salary = float(value)
 
@@ -119,6 +124,7 @@ class FullTimeEmployee(Employee):
     @bonus.setter
     def bonus(self, value: float) -> None:
         if value < 0:
+            _log.error("Invalid bonus=%.2f", value)
             raise ValueError(f"bonus must be >= 0, got {value}")
         self._bonus = float(value)
 
@@ -172,6 +178,7 @@ class ContractEmployee(Employee):
     @hours_worked.setter
     def hours_worked(self, value: float) -> None:
         if value < 0:
+            _log.error("Invalid hours_worked=%.2f", value)
             raise ValueError(f"hours_worked must be >= 0, got {value}")
         self._hours_worked = float(value)
 
