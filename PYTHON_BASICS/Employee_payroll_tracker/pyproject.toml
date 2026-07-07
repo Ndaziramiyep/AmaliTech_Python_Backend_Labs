@@ -1,27 +1,15 @@
 [tool.poetry]
 package-mode = false
 
-[tool.pytest.ini_options]
-pythonpath = ["."]
-
 [project]
 name = "employee-payroll-tracker"
 version = "0.1.0"
-description = "payroll tracker"
+description = "A Python CLI application for computing employee payroll with Rwanda PAYE tax."
 authors = [
-    {name = "yes"}
+    {name = "AmaliTech"}
 ]
 requires-python = ">=3.14"
-dependencies = [
-    "pytest (>=9.1.1,<10.0.0)"
-]
-
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
-
-[dependency-groups]
-dev = [
-    "pytest (>=9.1.1,<10.0.0)"
-]
