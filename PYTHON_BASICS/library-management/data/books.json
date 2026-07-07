@@ -1,0 +1,54 @@
+[
+    {
+        "title": "ds",
+        "isbn": "12",
+        "category": "Romance",
+        "book_type": "Ebook",
+        "year": "12",
+        "copies": 12,
+        "author": {
+            "name": "as",
+            "nationality": "ass",
+            "birth_year": "12"
+        }
+    },
+    {
+        "title": "we",
+        "isbn": "12",
+        "category": "General",
+        "book_type": "Hardcover",
+        "year": "12",
+        "copies": 12,
+        "author": {
+            "name": "we",
+            "nationality": "we",
+            "birth_year": "12"
+        }
+    },
+    {
+        "title": "wew",
+        "isbn": "3",
+        "category": "General",
+        "book_type": "Hardcover",
+        "year": "2",
+        "copies": 2,
+        "author": {
+            "name": "qww",
+            "nationality": "ss",
+            "birth_year": "12"
+        }
+    },
+    {
+        "title": "ww",
+        "isbn": "fhf",
+        "category": "Fantasy",
+        "book_type": "Ebook",
+        "year": "fjf",
+        "copies": 4646,
+        "author": {
+            "name": "ww",
+            "nationality": "qq",
+            "birth_year": "vv"
+        }
+    }
+]
