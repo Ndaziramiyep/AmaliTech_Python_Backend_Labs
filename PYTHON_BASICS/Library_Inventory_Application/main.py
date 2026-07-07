@@ -10,9 +10,9 @@ def _prompt_isbn(existing: set[str] | None = None, label: str = "ISBN") -> str:
     while True:
         raw = input(f"  {label} (e.g. 978-0-13-468599-1): ").strip().upper()
         if not raw:
-            print("  ! ISBN cannot be empty.")
+            print("  ! ISBN cannot be empty. Please enter a valid ISBN.")
         elif existing is not None and raw in existing:
-            print(f"  ! ISBN '{raw}' already exists.")
+            print(f"  ! ISBN '{raw}' is already registered. Use a different ISBN.")
         else:
             return raw
 
@@ -23,9 +23,9 @@ def _prompt_str(label: str, allow_digits: bool = True) -> str:
         raw   = input(f"  {label}: ").strip()
         field = label.split("(")[0].strip()
         if not raw:
-            print(f"  ! {field} cannot be empty.")
+            print(f"  ! {field} cannot be empty. Please enter a value.")
         elif not allow_digits and any(ch.isdigit() for ch in raw):
-            print(f"  ! {field} must not contain digits.")
+            print(f"  ! {field} should only contain letters (no digits allowed).")
         else:
             return raw
 
@@ -36,11 +36,11 @@ def _prompt_int(label: str, min_val: int = 1) -> int:
         try:
             value = int(input(f"  {label}: ").strip())
             if value < min_val:
-                print(f"  ! Value must be >= {min_val}.")
+                print(f"  ! Please enter a whole number of {min_val} or more.")
             else:
                 return value
         except ValueError:
-            print("  ! Enter a whole number (e.g. 2024).")
+            print("  ! That doesn't look like a whole number. Try again (e.g. 2024).")
 
 
 def _prompt_float(label: str, min_val: float = 0.01) -> float:
@@ -49,16 +49,17 @@ def _prompt_float(label: str, min_val: float = 0.01) -> float:
         try:
             value = float(input(f"  {label}: ").strip())
             if value < min_val:
-                print(f"  ! Value must be >= {min_val:.2f}.")
+                print(f"  ! Value must be at least {min_val:.2f}. Please try again.")
             else:
                 return value
         except ValueError:
-            print("  ! Enter a number (e.g. 4.5).")
+            print("  ! That doesn't look like a valid number. Try again (e.g. 4.5).")
 
 
 def _add_physical(inv: Inventory) -> None:
     """Collect input and add a PhysicalBook."""
     print("\n  -- Add Physical Book --")
+    print("  Fill in the details below to register a new physical book.")
     existing = {i.isbn for i in inv.all_items()}
     isbn   = _prompt_isbn(existing)
     title  = _prompt_str("Title        (e.g. Clean Code)")
@@ -76,6 +77,7 @@ def _add_physical(inv: Inventory) -> None:
 def _add_ebook(inv: Inventory) -> None:
     """Collect input and add an EBook."""
     print("\n  -- Add E-Book --")
+    print("  Fill in the details below to register a new e-book.")
     existing = {i.isbn for i in inv.all_items()}
     isbn    = _prompt_isbn(existing)
     title   = _prompt_str("Title      (e.g. The Pragmatic Programmer)")
@@ -93,6 +95,7 @@ def _add_ebook(inv: Inventory) -> None:
 def _add_audiobook(inv: Inventory) -> None:
     """Collect input and add an AudioBook."""
     print("\n  -- Add Audio Book --")
+    print("  Fill in the details below to register a new audio book.")
     existing = {i.isbn for i in inv.all_items()}
     isbn     = _prompt_isbn(existing)
     title    = _prompt_str("Title    (e.g. Atomic Habits)")
@@ -110,10 +113,11 @@ def _add_audiobook(inv: Inventory) -> None:
 def _remove(inv: Inventory) -> None:
     """Prompt for an ISBN and remove the item."""
     print("\n  -- Remove Item --")
+    print("  Enter the ISBN of the item you want to remove from the inventory.")
     isbn = _prompt_isbn(label="ISBN to remove")
     try:
         item = inv.remove_item(isbn)
-        print(f"\n  - '{item.title}' removed.")
+        print(f"\n  - '{item.title}' has been successfully removed from the inventory.")
     except ValueError as exc:
         print(f"  ! {exc}")
 
@@ -121,12 +125,17 @@ def _remove(inv: Inventory) -> None:
 def _search(inv: Inventory) -> None:
     """Search by title, author, or ISBN and print matches."""
     print("\n  -- Search --")
-    query   = input("  Query (title / author / ISBN): ").strip()
-    results = inv.search(query)
-    if not results:
-        print("  No matches found.")
+    print("  You can search by title, author name, or ISBN.")
+    query   = input("  Search query: ").strip()
+    try:
+        results = inv.search(query)
+    except ValueError as exc:
+        print(f"  ! {exc}")
         return
-    print(f"\n  {len(results)} result(s):\n")
+    if not results:
+        print(f"  No items found matching '{query}'. Try a different search term.")
+        return
+    print(f"\n  Found {len(results)} item(s) matching '{query}':\n")
     for item in results:
         print(f"  {item.item_type()}: {item.summary()}")
 
@@ -134,6 +143,7 @@ def _search(inv: Inventory) -> None:
 def _view_details(inv: Inventory) -> None:
     """Print the full detail block for one item."""
     print("\n  -- Item Details --")
+    print("  Enter the ISBN of the item you want to view in full.")
     isbn = _prompt_isbn(label="ISBN to view")
     try:
         print("\n" + inv.get_item(isbn).format_details())
@@ -144,12 +154,13 @@ def _view_details(inv: Inventory) -> None:
 def _borrow(inv: Inventory) -> None:
     """Borrow an item for a named member."""
     print("\n  -- Borrow Item --")
+    print("  Enter the ISBN of the item and the member's full name.")
     isbn   = _prompt_isbn(label="ISBN to borrow")
     member = _prompt_str("Member name (e.g. Alice Mutoni)", allow_digits=False)
     try:
         item = inv.get_item(isbn)
         inv.borrow_item(isbn, member)
-        print(f"\n  + '{item.title}' borrowed by {member}.")
+        print(f"\n  + '{item.title}' has been checked out to {member}. Enjoy the read!")
     except ValueError as exc:
         print(f"  ! {exc}")
 
@@ -157,11 +168,12 @@ def _borrow(inv: Inventory) -> None:
 def _return(inv: Inventory) -> None:
     """Return a borrowed item."""
     print("\n  -- Return Item --")
+    print("  Enter the ISBN of the item being returned.")
     isbn = _prompt_isbn(label="ISBN to return")
     try:
         item     = inv.get_item(isbn)
         borrower = inv.return_item(isbn)
-        print(f"\n  + '{item.title}' returned (was: {borrower}).")
+        print(f"\n  + '{item.title}' has been returned successfully (borrowed by: {borrower}).")
     except ValueError as exc:
         print(f"  ! {exc}")
 
@@ -170,9 +182,9 @@ def _view_all(inv: Inventory) -> None:
     """List every item in the inventory."""
     items = inv.all_items()
     if not items:
-        print("\n  Inventory is empty.")
+        print("\n  The inventory is currently empty. Add some items to get started.")
         return
-    print(f"\n  {len(items)} item(s):\n")
+    print(f"\n  There are {len(items)} item(s) in the inventory:\n")
     for item in items:
         print(f"  {item.item_type()}: {item.summary()}")
 
@@ -181,12 +193,12 @@ def _show_stats(inv: Inventory) -> None:
     """Print inventory counts and availability."""
     s = inv.stats()
     print("\n  Inventory Statistics")
-    print(f"  Total items    : {s['total']}")
+    print(f"  Total items    : {s['total']} (all item types combined)")
     print(f"  Physical Books : {s['physical_books']}")
     print(f"  E-Books        : {s['ebooks']}")
     print(f"  Audio Books    : {s['audio_books']}")
-    print(f"  Copies on shelf: {s['copies_on_shelf']}")
-    print(f"  Audio on loan  : {s['audio_on_loan']}")
+    print(f"  Copies on shelf: {s['copies_on_shelf']} (physical copies currently available)")
+    print(f"  Audio on loan  : {s['audio_on_loan']} (audio books currently borrowed)")
 
 
 _MENU: dict[str, tuple[str, callable]] = {
@@ -215,15 +227,15 @@ def run_library() -> None:
             print(f"    [{key:>2}] {label}")
         print("  " + divider(46, "-"))
 
-        choice = input("\n  Your choice: ").strip()
+        choice = input("\n  Enter a menu number: ").strip()
 
         if choice == "0":
-            print("\n  Goodbye.")
+            print("\n  Thank you for using the Library Inventory System. Goodbye!")
             break
         elif choice in _MENU:
             _MENU[choice][1](inv)
         else:
-            print("  ! Invalid choice.")
+            print(f"  ! '{choice}' is not a valid option. Please enter a number from the menu.")
 
 
 if __name__ == "__main__":

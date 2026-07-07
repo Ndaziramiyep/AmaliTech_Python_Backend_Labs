@@ -7,19 +7,20 @@ class Inventory:
     """Library collection keyed by ISBN for O(1) access."""
 
     def __init__(self) -> None:
+        """Initialise an empty inventory."""
         self._items: dict[str, LibraryItem] = {}
 
     def add_item(self, item: LibraryItem) -> None:
         """Add item; raise ValueError on duplicate ISBN."""
         if item.isbn in self._items:
-            raise ValueError(f"ISBN '{item.isbn}' already exists.")
+            raise ValueError(f"An item with ISBN '{item.isbn}' is already in the inventory.")
         self._items[item.isbn] = item
 
     def remove_item(self, isbn: str) -> LibraryItem:
         """Remove and return item; raise ValueError if on loan or not found."""
         item = self.get_item(isbn)
         if not item.is_available:
-            raise ValueError(f"Cannot remove '{item.title}': currently on loan.")
+            raise ValueError(f"Cannot remove '{item.title}': it is currently on loan and must be returned first.")
         del self._items[isbn]
         return item
 
@@ -27,7 +28,7 @@ class Inventory:
         """Return item by ISBN; raise ValueError if not found."""
         item = self._items.get(isbn)
         if item is None:
-            raise ValueError(f"No item found with ISBN '{isbn}'.")
+            raise ValueError(f"No item with ISBN '{isbn}' was found in the inventory.")
         return item
 
     def all_items(self) -> list[LibraryItem]:
@@ -36,6 +37,8 @@ class Inventory:
 
     def search(self, query: str) -> list[LibraryItem]:
         """Return items matching query in title, author, or ISBN (case-insensitive)."""
+        if not query.strip():
+            raise ValueError("Search query cannot be empty.")
         q = query.lower()
         return [
             item for item in self._items.values()
