@@ -1,32 +1,12 @@
-"""
-main.py
-CLI entry point for the Library Inventory Application.
-
-Provides an interactive menu loop that dispatches user choices to focused
-handler functions. All application state lives in a single Inventory instance.
-Input helpers validate and re-prompt until valid data is entered.
-"""
+"""main.py — CLI entry point for the Library Inventory Application."""
 
 from book import PhysicalBook, EBook, AudioBook
 from inventory import Inventory
 from utils import divider, format_header
 
 
-# ---------------------------------------------------------------------------
-# Input helpers
-# ---------------------------------------------------------------------------
-
 def _prompt_isbn(existing: set[str] | None = None, label: str = "ISBN") -> str:
-    """Prompt for a non-empty ISBN string.
-
-    Args:
-        existing: Set of already-registered ISBNs. When provided, duplicate
-                  values are rejected. Pass None for lookup operations.
-        label:    Prompt label shown to the user.
-
-    Returns:
-        A validated, uppercased ISBN string.
-    """
+    """Prompt for a non-empty ISBN; reject duplicates when existing is given."""
     while True:
         raw = input(f"  {label} (e.g. 978-0-13-468599-1): ").strip().upper()
         if not raw:
@@ -38,16 +18,7 @@ def _prompt_isbn(existing: set[str] | None = None, label: str = "ISBN") -> str:
 
 
 def _prompt_str(label: str, allow_digits: bool = True) -> str:
-    """Prompt for a non-empty string.
-
-    Args:
-        label:        Prompt label shown to the user (hint in parentheses
-                      is stripped from error messages automatically).
-        allow_digits: When False, input containing digit characters is rejected.
-
-    Returns:
-        A validated, stripped string.
-    """
+    """Prompt for a non-empty string; optionally reject digit characters."""
     while True:
         raw   = input(f"  {label}: ").strip()
         field = label.split("(")[0].strip()
@@ -60,15 +31,7 @@ def _prompt_str(label: str, allow_digits: bool = True) -> str:
 
 
 def _prompt_int(label: str, min_val: int = 1) -> int:
-    """Prompt for an integer >= min_val.
-
-    Args:
-        label:   Prompt label shown to the user.
-        min_val: Minimum acceptable value (inclusive). Defaults to 1.
-
-    Returns:
-        A validated integer.
-    """
+    """Prompt for an integer >= min_val."""
     while True:
         try:
             value = int(input(f"  {label}: ").strip())
@@ -81,15 +44,7 @@ def _prompt_int(label: str, min_val: int = 1) -> int:
 
 
 def _prompt_float(label: str, min_val: float = 0.01) -> float:
-    """Prompt for a float >= min_val.
-
-    Args:
-        label:   Prompt label shown to the user.
-        min_val: Minimum acceptable value (inclusive). Defaults to 0.01.
-
-    Returns:
-        A validated float.
-    """
+    """Prompt for a float >= min_val."""
     while True:
         try:
             value = float(input(f"  {label}: ").strip())
@@ -101,12 +56,8 @@ def _prompt_float(label: str, min_val: float = 0.01) -> float:
             print("  ! Enter a number (e.g. 4.5).")
 
 
-# ---------------------------------------------------------------------------
-# Action handlers
-# ---------------------------------------------------------------------------
-
 def _add_physical(inv: Inventory) -> None:
-    """Collect input and add a PhysicalBook to the inventory."""
+    """Collect input and add a PhysicalBook."""
     print("\n  -- Add Physical Book --")
     existing = {i.isbn for i in inv.all_items()}
     isbn   = _prompt_isbn(existing)
@@ -123,7 +74,7 @@ def _add_physical(inv: Inventory) -> None:
 
 
 def _add_ebook(inv: Inventory) -> None:
-    """Collect input and add an EBook to the inventory."""
+    """Collect input and add an EBook."""
     print("\n  -- Add E-Book --")
     existing = {i.isbn for i in inv.all_items()}
     isbn    = _prompt_isbn(existing)
@@ -140,7 +91,7 @@ def _add_ebook(inv: Inventory) -> None:
 
 
 def _add_audiobook(inv: Inventory) -> None:
-    """Collect input and add an AudioBook to the inventory."""
+    """Collect input and add an AudioBook."""
     print("\n  -- Add Audio Book --")
     existing = {i.isbn for i in inv.all_items()}
     isbn     = _prompt_isbn(existing)
@@ -157,7 +108,7 @@ def _add_audiobook(inv: Inventory) -> None:
 
 
 def _remove(inv: Inventory) -> None:
-    """Prompt for an ISBN and remove the matching item."""
+    """Prompt for an ISBN and remove the item."""
     print("\n  -- Remove Item --")
     isbn = _prompt_isbn(label="ISBN to remove")
     try:
@@ -168,7 +119,7 @@ def _remove(inv: Inventory) -> None:
 
 
 def _search(inv: Inventory) -> None:
-    """Search by title, author, or ISBN and display all matches."""
+    """Search by title, author, or ISBN and print matches."""
     print("\n  -- Search --")
     query   = input("  Query (title / author / ISBN): ").strip()
     results = inv.search(query)
@@ -181,7 +132,7 @@ def _search(inv: Inventory) -> None:
 
 
 def _view_details(inv: Inventory) -> None:
-    """Print the full detail block for a single item."""
+    """Print the full detail block for one item."""
     print("\n  -- Item Details --")
     isbn = _prompt_isbn(label="ISBN to view")
     try:
@@ -191,7 +142,7 @@ def _view_details(inv: Inventory) -> None:
 
 
 def _borrow(inv: Inventory) -> None:
-    """Borrow an item on behalf of a named member."""
+    """Borrow an item for a named member."""
     print("\n  -- Borrow Item --")
     isbn   = _prompt_isbn(label="ISBN to borrow")
     member = _prompt_str("Member name (e.g. Alice Mutoni)", allow_digits=False)
@@ -216,7 +167,7 @@ def _return(inv: Inventory) -> None:
 
 
 def _view_all(inv: Inventory) -> None:
-    """List every item currently in the inventory."""
+    """List every item in the inventory."""
     items = inv.all_items()
     if not items:
         print("\n  Inventory is empty.")
@@ -227,7 +178,7 @@ def _view_all(inv: Inventory) -> None:
 
 
 def _show_stats(inv: Inventory) -> None:
-    """Print a summary of inventory counts and availability."""
+    """Print inventory counts and availability."""
     s = inv.stats()
     print("\n  Inventory Statistics")
     print(f"  Total items    : {s['total']}")
@@ -237,10 +188,6 @@ def _show_stats(inv: Inventory) -> None:
     print(f"  Copies on shelf: {s['copies_on_shelf']}")
     print(f"  Audio on loan  : {s['audio_on_loan']}")
 
-
-# ---------------------------------------------------------------------------
-# Menu dispatch table
-# ---------------------------------------------------------------------------
 
 _MENU: dict[str, tuple[str, callable]] = {
     "1":  ("Add a Physical Book",  _add_physical),
@@ -257,12 +204,8 @@ _MENU: dict[str, tuple[str, callable]] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Main loop
-# ---------------------------------------------------------------------------
-
 def run_library() -> None:
-    """Run the interactive menu loop until the user chooses to exit."""
+    """Run the interactive menu loop until the user exits."""
     inv = Inventory()
     print(format_header("LIBRARY INVENTORY SYSTEM"))
 
