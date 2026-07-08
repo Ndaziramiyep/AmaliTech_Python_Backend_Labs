@@ -4,12 +4,12 @@
         "isbn": "12",
         "category": "Romance",
         "book_type": "Ebook",
-        "year": "12",
+        "year": 12,
         "copies": 12,
         "author": {
             "name": "as",
             "nationality": "ass",
-            "birth_year": "12"
+            "birth_year": 12
         }
     },
     {
@@ -17,12 +17,12 @@
         "isbn": "12",
         "category": "General",
         "book_type": "Hardcover",
-        "year": "12",
+        "year": 12,
         "copies": 12,
         "author": {
             "name": "we",
             "nationality": "we",
-            "birth_year": "12"
+            "birth_year": 12
         }
     },
     {
@@ -30,12 +30,12 @@
         "isbn": "3",
         "category": "General",
         "book_type": "Hardcover",
-        "year": "2",
+        "year": 2,
         "copies": 2,
         "author": {
             "name": "qww",
             "nationality": "ss",
-            "birth_year": "12"
+            "birth_year": 12
         }
     },
     {
@@ -43,12 +43,25 @@
         "isbn": "fhf",
         "category": "Fantasy",
         "book_type": "Ebook",
-        "year": "fjf",
+        "year": null,
         "copies": 4646,
         "author": {
             "name": "ww",
             "nationality": "qq",
-            "birth_year": "vv"
+            "birth_year": null
+        }
+    },
+    {
+        "title": "Chemistry level 4",
+        "isbn": "ISB001",
+        "category": "Technology",
+        "book_type": "Ebook",
+        "year": 2022,
+        "copies": 500,
+        "author": {
+            "name": "Pazzo",
+            "nationality": "Rwanda",
+            "birth_year": 2022
         }
     }
 ]

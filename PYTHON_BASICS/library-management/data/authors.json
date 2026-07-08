@@ -2,16 +2,26 @@
     {
         "name": "QWW",
         "nationality": "BB",
-        "birth_year": "2020"
+        "birth_year": 2020
     },
     {
         "name": "WW",
         "nationality": "RR",
-        "birth_year": "2010"
+        "birth_year": 2010
     },
     {
         "name": "ww",
         "nationality": "qq",
-        "birth_year": "vv"
+        "birth_year": null
+    },
+    {
+        "name": "Patrick",
+        "nationality": null,
+        "birth_year": null
+    },
+    {
+        "name": "Pazzo",
+        "nationality": "Rwanda",
+        "birth_year": 2022
     }
 ]

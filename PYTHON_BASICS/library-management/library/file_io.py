@@ -39,18 +39,30 @@ def serialize_book(book):
         }
     }
 
+def _safe_int(value):
+    """Return int(value) or None if value is not a valid integer."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def deserialize_book(data):
     """Convert dict from JSON back to Book object."""
     author_data = data["author"]
-    author = Author(author_data["name"], author_data.get("nationality"), author_data.get("birth_year"))
+    author = Author(
+        author_data["name"],
+        author_data.get("nationality"),
+        _safe_int(author_data.get("birth_year")),
+    )
     return Book(
         title=data["title"],
         author=author,
         isbn=data["isbn"],
-        category=Categories(data.get("category","General")),
-        book_type=TypeOfBook(data.get("book_type","Hardcover")),
-        year=data.get("year"),
-        copies=data.get("copies",1)
+        category=Categories(data.get("category", "General")),
+        book_type=TypeOfBook(data.get("book_type", "Hardcover")),
+        year=_safe_int(data.get("year")),
+        copies=data.get("copies", 1),
     )
 
 def save_borrows(borrows):
@@ -108,8 +120,9 @@ def serialize_author(author):
     }
 
 def deserialize_author(data):
+    """Convert dict from JSON back to Author object."""
     return Author(
         name=data["name"],
         nationality=data.get("nationality"),
-        birth_year=data.get("birth_year")
+        birth_year=_safe_int(data.get("birth_year")),
     )

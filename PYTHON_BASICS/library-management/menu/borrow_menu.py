@@ -4,7 +4,11 @@ from library.utils import (get_available_copies)
 
 
 def borrow_book(books, borrows):
-    isbn = input("ISBN of book to borrow: ")
+    """Borrow a book by ISBN if copies are available."""
+    isbn = input("ISBN of book to borrow: ").strip()
+    if not isbn:
+        print("ISBN cannot be empty.")
+        return
     book_to_borrow = next((b for b in books if b.isbn == isbn), None)
 
     if not book_to_borrow:
@@ -16,17 +20,27 @@ def borrow_book(books, borrows):
         print("No available copies to borrow.")
         return
 
-    borrower = input("Your name: ")
-    borrow_record = Borrow(borrower, book_to_borrow.title)
+    borrower = input("Your name: ").strip()
+    if not borrower:
+        print("Borrower name cannot be empty.")
+        return
 
+    borrow_record = Borrow(borrower, book_to_borrow.title)
     borrows.append(borrow_record)
     file_io.save_borrows(borrows)
     print(f"Book borrowed successfully! Due date: {borrow_record.due_date}")
 
 
 def return_book(books, borrows):
-    borrower = input("Your name: ")
-    isbn = input("ISBN of book to return: ")
+    """Mark a borrowed book as returned."""
+    borrower = input("Your name: ").strip()
+    if not borrower:
+        print("Borrower name cannot be empty.")
+        return
+    isbn = input("ISBN of book to return: ").strip()
+    if not isbn:
+        print("ISBN cannot be empty.")
+        return
 
     book_to_return = next((b for b in books if b.isbn == isbn), None)
 
@@ -49,6 +63,10 @@ def return_book(books, borrows):
 
 
 def list_borrows(borrows):
+    """Display all borrow records with their current status."""
+    if not borrows:
+        print("No borrow records found.")
+        return
     print("\nBorrow records:")
     for b in borrows:
         status = "Returned" if b.return_date else ("Overdue" if b.is_overdue() else "Borrowed")

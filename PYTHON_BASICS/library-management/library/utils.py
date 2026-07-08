@@ -17,6 +17,7 @@ def get_borrowed_count(book: Book, borrows: list[Borrow]) -> int:
     return sum(1 for b in borrows if b.book_title == book.title and not b.return_date)
 
 def search_books(books: list[Book], query: str, field: str) -> list[Book]:
+    """Search books by a given field (title, author, isbn, category, year)."""
     query = query.lower()
     results = []
     for book in books:

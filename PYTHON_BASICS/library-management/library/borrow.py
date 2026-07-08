@@ -4,12 +4,16 @@ from .resources import LibraryResource
 
 
 class Borrow(LibraryResource):
-    """class for Author"""
-    def __init__(self,borrower_name,book_title,borrow_date=None,return_date=None,due_date=None):
+    """Represents a book borrowing record."""
 
+    def __init__(self,borrower_name,book_title,borrow_date=None,return_date=None,due_date=None):
+        if not borrower_name or not str(borrower_name).strip():
+            raise ValueError("Borrower name cannot be empty")
+        if not book_title or not str(book_title).strip():
+            raise ValueError("Book title cannot be empty")
         super().__init__(borrower_name)
-        self.borrower_name = borrower_name
-        self.book_title = book_title
+        self.borrower_name = borrower_name.strip()
+        self.book_title = book_title.strip()
         self.borrow_date = borrow_date or date.today()
         self.due_date = due_date or self.borrow_date + timedelta(days=14)
         self.return_date = return_date

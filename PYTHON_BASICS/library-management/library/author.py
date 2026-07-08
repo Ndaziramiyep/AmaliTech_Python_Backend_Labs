@@ -2,13 +2,25 @@ from .resources import LibraryResource
 
 
 class Author(LibraryResource):
-    """class for Author"""
+    """Represents a book author."""
 
     def __init__(self,name,nationality,birth_year):
+        if not name or not str(name).strip():
+            raise ValueError("Author name cannot be empty")
+        if nationality is not None and not str(nationality).strip():
+            raise ValueError("Nationality cannot be blank if provided")
+        if birth_year is not None:
+            try:
+                birth_year = int(birth_year)
+            except (ValueError, TypeError):
+                raise ValueError("Birth year must be a number")
+            from datetime import date
+            if birth_year < 1 or birth_year > date.today().year:
+                raise ValueError(f"Birth year must be between 1 and {date.today().year}")
         super().__init__(name)
         self.nationality = nationality
         self.birth_year = birth_year
-        self.name = name
+        self.name = name.strip()
 
     def __repr__(self):
         return (f"Author(name={self.name}, nationality={self.nationality}, birth_year={self.birth_year})")

@@ -6,6 +6,7 @@ from menu.resource_menu import (add_book, delete_book, filter_books_cli,
 
 
 def cli():
+    """Main CLI loop: load data, display menu, and dispatch user actions."""
     books = file_io.load_books()
     borrows = file_io.load_borrows()
     authors = file_io.load_authors()

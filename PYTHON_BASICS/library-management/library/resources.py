@@ -4,10 +4,10 @@ from .enum import Categories, TypeOfBook
 
 
 class LibraryResource(ABC):
+    """Abstract base class for all library resources."""
+
     def __init__(self,title):
         self.title = title
-
-    """abstract class for library resources"""
 
     @abstractmethod
     def __repr__(self):
@@ -18,17 +18,16 @@ class LibraryResource(ABC):
         pass
 
 class Book(LibraryResource):
-    """class for books"""
+    """Represents a book in the library."""
+
     def __init__(self, title, author,isbn,year,category :Categories=Categories.GENERAL,book_type:TypeOfBook=TypeOfBook.HARDCOVER,copies=1):
-
         self._title=None
-
         self._isbn=None
         self._category=None
         self._book_type=None
         self._author=None
-
-
+        self._year=None
+        self._copies=None
 
         self.title = title
         self.author = author
@@ -44,11 +43,11 @@ class Book(LibraryResource):
 
     @title.setter
     def title(self,value):
-        if not value.replace(" ","").isalpha():
-            raise ValueError("title must contain only space and letters")
-        if not value:
+        if not value or not value.strip():
             raise ValueError("Title cannot be empty")
-        self._title = value
+        if not value.replace(" ","").replace("-","").replace("'","").replace(":","").replace(",","").replace(".","").isalnum():
+            raise ValueError("Title must contain only letters, numbers, spaces, or common punctuation")
+        self._title = value.strip()
 
 
 
@@ -58,9 +57,9 @@ class Book(LibraryResource):
 
     @isbn.setter
     def isbn(self,value):
-        if not value:
+        if not value or not str(value).strip():
             raise ValueError("ISBN cannot be empty")
-        self._isbn = value
+        self._isbn = str(value).strip()
 
     @property
     def category(self):
@@ -100,11 +99,44 @@ class Book(LibraryResource):
             raise ValueError("author must be an Author object")
         self._author = value
 
+    @property
+    def year(self):
+        return self._year
+
+    @year.setter
+    def year(self, value):
+        """Year must be a positive integer not in the future."""
+        from datetime import date
+        if value is None:
+            self._year = None
+            return
+        try:
+            value = int(value)
+        except (ValueError, TypeError):
+            raise ValueError("Publication year must be a number")
+        if value < 1 or value > date.today().year:
+            raise ValueError(f"Publication year must be between 1 and {date.today().year}")
+        self._year = value
+
+    @property
+    def copies(self):
+        return self._copies
+
+    @copies.setter
+    def copies(self, value):
+        """Copies must be a positive integer."""
+        try:
+            value = int(value)
+        except (ValueError, TypeError):
+            raise ValueError("Copies must be a number")
+        if value < 1:
+            raise ValueError("Copies must be at least 1")
+        self._copies = value
+
     def __repr__(self):
-        return (f"Book(title={self.title}, author={self.author}, isbn={self.isbn}, year={self.year}, category={self.category.value}, book_type={self.book_type.value}")
+        return (f"Book(title={self.title}, author={self.author}, isbn={self.isbn}, year={self._year}, category={self.category.value}, book_type={self.book_type.value}")
 
     def __eq__(self, other):
         if not isinstance(other, Book):
             return False
-
         return self.isbn == other.isbn
