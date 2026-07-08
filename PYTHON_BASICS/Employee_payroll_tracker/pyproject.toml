@@ -1,6 +1,9 @@
 [tool.poetry]
 package-mode = false
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [project]
 name = "employee-payroll-tracker"
 version = "0.1.0"

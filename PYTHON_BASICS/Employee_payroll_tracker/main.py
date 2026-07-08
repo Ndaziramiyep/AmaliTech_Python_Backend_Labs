@@ -1,6 +1,6 @@
 """main.py — CLI entry point for the Employee Payroll Tracker."""
 
-from models import Employee, FullTimeEmployee, ContractEmployee, Intern
+from employee import Employee, FullTimeEmployee, ContractEmployee, Intern
 from payroll import generate_payslip, process_payroll
 from utils import format_currency, divider, format_header
 

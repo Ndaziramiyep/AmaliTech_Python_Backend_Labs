@@ -1,6 +1,6 @@
 """payroll.py — Rwanda PAYE tax logic, payslip generation, and batch payroll processing."""
 
-from models import Employee
+from employee import Employee
 from utils import format_currency, divider
 
 
