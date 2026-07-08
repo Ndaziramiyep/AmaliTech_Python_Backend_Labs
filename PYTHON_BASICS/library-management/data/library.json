@@ -1,0 +1,127 @@
+{
+    "books": [
+        {
+            "title": "ds",
+            "isbn": "12",
+            "category": "Romance",
+            "book_type": "Ebook",
+            "year": 12,
+            "copies": 12,
+            "author": {
+                "name": "as",
+                "nationality": "ass",
+                "birth_year": 12
+            }
+        },
+        {
+            "title": "wew",
+            "isbn": "3",
+            "category": "General",
+            "book_type": "Hardcover",
+            "year": 2,
+            "copies": 2,
+            "author": {
+                "name": "qww",
+                "nationality": "ss",
+                "birth_year": 12
+            }
+        },
+        {
+            "title": "ww",
+            "isbn": "fhf",
+            "category": "Fantasy",
+            "book_type": "Ebook",
+            "year": null,
+            "copies": 4646,
+            "author": {
+                "name": "ww",
+                "nationality": "qq",
+                "birth_year": null
+            }
+        },
+        {
+            "title": "Chemistry level 4",
+            "isbn": "ISB001",
+            "category": "Technology",
+            "book_type": "Ebook",
+            "year": 2022,
+            "copies": 500,
+            "author": {
+                "name": "Pazzo",
+                "nationality": "Rwanda",
+                "birth_year": 2022
+            }
+        }
+    ],
+    "authors": [
+        {
+            "name": "QWW",
+            "nationality": "BB",
+            "birth_year": 2020
+        },
+        {
+            "name": "WW",
+            "nationality": "RR",
+            "birth_year": 2010
+        },
+        {
+            "name": "ww",
+            "nationality": "qq",
+            "birth_year": null
+        },
+        {
+            "name": "Patrick",
+            "nationality": null,
+            "birth_year": null
+        },
+        {
+            "name": "Pazzo",
+            "nationality": "Rwanda",
+            "birth_year": 2022
+        }
+    ],
+    "borrows": [
+        {
+            "borrower_name": "Patrick",
+            "book_title": "Networking",
+            "borrow_date": "2025-11-24",
+            "return_date": null,
+            "due_date": "2025-12-08"
+        },
+        {
+            "borrower_name": "Gad",
+            "book_title": "Maths",
+            "borrow_date": "2025-11-24",
+            "return_date": "2025-11-24",
+            "due_date": "2025-12-08"
+        },
+        {
+            "borrower_name": "Niyonkuru",
+            "book_title": "Geography",
+            "borrow_date": "2025-11-24",
+            "return_date": null,
+            "due_date": "2025-12-08"
+        },
+        {
+            "borrower_name": "Dunia",
+            "book_title": "English",
+            "borrow_date": "2025-11-24",
+            "return_date": null,
+            "due_date": "2025-12-08"
+        },
+        {
+            "borrower_name": "Dieu",
+            "book_title": "romance",
+            "borrow_date": "2025-11-24",
+            "return_date": "2025-11-24",
+            "due_date": "2025-12-08"
+        },
+        {
+            "borrower_name": "amos",
+            "book_title": "Chemistry level 4",
+            "borrow_date": "2026-07-08",
+            "return_date": null,
+            "due_date": "2026-07-22"
+        }
+    ]
+}

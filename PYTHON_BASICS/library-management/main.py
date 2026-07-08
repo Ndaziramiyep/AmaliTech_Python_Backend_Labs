@@ -1,4 +1,4 @@
-from cli.menu import cli
+from utils import cli
 
 if __name__ == "__main__":
     cli()
