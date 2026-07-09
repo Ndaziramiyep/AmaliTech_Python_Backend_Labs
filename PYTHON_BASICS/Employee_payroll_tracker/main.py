@@ -37,7 +37,7 @@ def prompt_emp_id(existing_ids: set[str]) -> str:
 def prompt_name() -> str:
     """Prompt until a valid full name with only letters, spaces, hyphens, or apostrophes is entered."""
     while True:
-        raw = input("  Full Name       (e.g. Nziza Paul) : ").strip()
+        raw = input("  Full Name (e.g. Nziza Paul) : ").strip()
         if not raw:
             print("  ! Name cannot be empty.")
         elif len(raw) < 2:
@@ -72,8 +72,8 @@ def _add_full_time(existing_ids: set[str]) -> FullTimeEmployee:
     print("\n  -- Full-Time Employee --")
     emp_id = prompt_emp_id(existing_ids)
     name   = prompt_name()
-    salary = prompt_float("Base Salary     (e.g. 350000)          ", min_val=0.01)
-    bonus  = prompt_float("Monthly Bonus   (e.g. 50000, 0 if none)", min_val=0.0)
+    salary = prompt_float("Base Salary (e.g. 350000)          ", min_val=0.01)
+    bonus  = prompt_float("Monthly Bonus (e.g. 50000, 0 if none)", min_val=0.0)
     return FullTimeEmployee(emp_id, name, salary, bonus)
 
 
@@ -82,8 +82,8 @@ def _add_contract(existing_ids: set[str]) -> ContractEmployee:
     print("\n  -- Contract Employee --")
     emp_id = prompt_emp_id(existing_ids)
     name   = prompt_name()
-    rate   = prompt_float("Hourly Rate     (e.g. 3000)            ", min_val=0.01)
-    hours  = prompt_float("Hours Worked    (e.g. 160)             ", min_val=0.0)
+    rate   = prompt_float("Hourly Rate (e.g. 3000)            ", min_val=0.01)
+    hours  = prompt_float("Hours Worked (e.g. 160)             ", min_val=0.0)
     return ContractEmployee(emp_id, name, rate, hours)
 
 
