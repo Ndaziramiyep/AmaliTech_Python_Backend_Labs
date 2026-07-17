@@ -51,6 +51,45 @@
                 "nationality": "Rwanda",
                 "birth_year": 2022
             }
+        },
+        {
+            "title": "Maths",
+            "isbn": "SSSSS02",
+            "category": "General",
+            "book_type": "Hardcover",
+            "year": 2022,
+            "copies": 10,
+            "author": {
+                "name": "Patrick",
+                "nationality": null,
+                "birth_year": null
+            }
+        },
+        {
+            "title": "Math",
+            "isbn": "FF001",
+            "category": "Science",
+            "book_type": "Hardcover",
+            "year": 2022,
+            "copies": 10,
+            "author": {
+                "name": "Patrick1",
+                "nationality": "Rwanda",
+                "birth_year": 2014
+            }
+        },
+        {
+            "title": "Biology",
+            "isbn": "F006",
+            "category": "Biography",
+            "book_type": "Ebook",
+            "year": 2024,
+            "copies": 10,
+            "author": {
+                "name": "Sarah",
+                "nationality": "Rwanda",
+                "birth_year": 2000
+            }
         }
     ],
     "authors": [
@@ -78,6 +117,21 @@
             "name": "Pazzo",
             "nationality": "Rwanda",
             "birth_year": 2022
+        },
+        {
+            "name": "S6 Math",
+            "nationality": "Rwanda",
+            "birth_year": 2022
+        },
+        {
+            "name": "Patrick1",
+            "nationality": "Rwanda",
+            "birth_year": 2014
+        },
+        {
+            "name": "Sarah",
+            "nationality": "Rwanda",
+            "birth_year": 2000
         }
     ],
     "borrows": [
@@ -122,6 +176,27 @@
             "borrow_date": "2026-07-08",
             "return_date": null,
             "due_date": "2026-07-22"
+        },
+        {
+            "borrower_name": "S6 Math",
+            "book_title": "Math",
+            "borrow_date": "2026-07-16",
+            "return_date": "2026-07-16",
+            "due_date": "2026-07-30"
+        },
+        {
+            "borrower_name": "Ndaziramiye",
+            "book_title": "Maths",
+            "borrow_date": "2026-07-17",
+            "return_date": null,
+            "due_date": "2026-07-31"
+        },
+        {
+            "borrower_name": "Amos",
+            "book_title": "Math",
+            "borrow_date": "2026-07-17",
+            "return_date": "2026-07-17",
+            "due_date": "2026-07-31"
         }
     ]
 }
