@@ -40,19 +40,6 @@
             }
         },
         {
-            "title": "Chemistry level 4",
-            "isbn": "ISB001",
-            "category": "Technology",
-            "book_type": "Ebook",
-            "year": 2022,
-            "copies": 500,
-            "author": {
-                "name": "Pazzo",
-                "nationality": "Rwanda",
-                "birth_year": 2022
-            }
-        },
-        {
             "title": "Maths",
             "isbn": "SSSSS02",
             "category": "General",
@@ -174,7 +161,7 @@
             "borrower_name": "amos",
             "book_title": "Chemistry level 4",
             "borrow_date": "2026-07-08",
-            "return_date": null,
+            "return_date": "2026-07-17",
             "due_date": "2026-07-22"
         },
         {
@@ -194,6 +181,13 @@
         {
             "borrower_name": "Amos",
             "book_title": "Math",
+            "borrow_date": "2026-07-17",
+            "return_date": "2026-07-17",
+            "due_date": "2026-07-31"
+        },
+        {
+            "borrower_name": "amos",
+            "book_title": "Chemistry level 4",
             "borrow_date": "2026-07-17",
             "return_date": "2026-07-17",
             "due_date": "2026-07-31"

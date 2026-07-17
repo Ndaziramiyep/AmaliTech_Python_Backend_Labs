@@ -32,6 +32,14 @@ class Borrow(LibraryResource):
         """Mark this borrow record as returned today."""
         self.return_date = date.today()
 
+    def __str__(self):
+        status = "Returned" if self.return_date else ("Overdue" if self.is_overdue() else "Borrowed")
+        return (
+            f"  [Borrow] Borrower: {self.borrower_name} | Book: {self.book_title} "
+            f"| Borrowed: {self.borrow_date} | Due: {self.due_date} "
+            f"| Returned: {self.return_date or 'N/A'} | Status: {status}"
+        )
+
     def __repr__(self):
         return (
             f"Borrow(borrower_name={self.borrower_name}, book_title={self.book_title}, "

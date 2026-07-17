@@ -153,25 +153,29 @@ def add_book(books, authors, borrows):
 
 
 def list_books(books, borrows):
-    """Display all books with their available and borrowed copy counts."""
+    """Display all books in a user-friendly format using __str__."""
     if not books:
         print("No books in the library.")
         return
-    print("\nBooks in library:")
+    print(f"\nBooks in library ({len(books)} total):")
+    print("-" * 80)
     for b in books:
         available = get_available_copies(b, borrows)
-        borrowed = get_borrowed_count(b, borrows)
-        print(f"{b} | Available: {available} | Borrowed: {borrowed}")
+        status = "Available" if available > 0 else "Not Available"
+        print(f"{str(b)} | Available: {available} | Status: {status}")
+    print("-" * 80)
 
 
 def list_authors(authors):
-    """Display all authors with their nationality and birth year."""
+    """Display all authors using __str__."""
     if not authors:
         print("No authors found.")
         return
-    print("\nAuthors:")
+    print(f"\nAuthors ({len(authors)} total):")
+    print("-" * 40)
     for a in authors:
-        print(f"{a.name} | Nationality: {a.nationality or 'N/A'} | Birth year: {a.birth_year or 'N/A'}")
+        print(str(a))
+        print("-" * 40)
 
 
 def borrow_book(books, borrows, authors):
@@ -232,14 +236,16 @@ def return_book(books, borrows, authors):
 
 
 def list_borrows(borrows):
-    """Display all borrow records with their current status."""
-    if not borrows:
-        print("No borrow records found.")
+    """Display only active (unreturned) borrow records using __str__."""
+    active = [b for b in borrows if not b.return_date]
+    if not active:
+        print("No active borrow records found.")
         return
-    print("\nBorrow records:")
-    for b in borrows:
-        status = "Returned" if b.return_date else ("Overdue" if b.is_overdue() else "Borrowed")
-        print(f"{b} | Status: {status}")
+    print(f"\nActive Borrow records ({len(active)} total):")
+    print("-" * 80)
+    for b in active:
+        print(str(b))
+    print("-" * 80)
 
 
 def search_book_cli(books):

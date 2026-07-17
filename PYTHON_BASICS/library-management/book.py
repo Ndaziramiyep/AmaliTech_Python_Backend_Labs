@@ -165,6 +165,13 @@ class Book(LibraryResource):
             raise ValueError("Copies must be at least 1")
         self._copies = value
 
+    def __str__(self):
+        return (
+            f"  [Book] ISBN: {self.isbn} | Title: {self.title} | Author: {self.author.name} "
+            f"| Year: {self._year or 'N/A'} | Category: {self.category.value} "
+            f"| Type: {self.book_type.value} | Copies: {self.copies}"
+        )
+
     def __repr__(self):
         return (
             f"Book(title={self.title}, author={self.author}, isbn={self.isbn}, "

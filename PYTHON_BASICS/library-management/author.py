@@ -23,6 +23,13 @@ class Author(LibraryResource):
         self.nationality = nationality
         self.birth_year = birth_year
 
+    def __str__(self):
+        return (
+            f"  Author : {self.name}\n"
+            f"  Origin : {self.nationality or 'N/A'}\n"
+            f"  Born   : {self.birth_year or 'N/A'}"
+        )
+
     def __repr__(self):
         return f"Author(name={self.name}, nationality={self.nationality}, birth_year={self.birth_year})"
 
