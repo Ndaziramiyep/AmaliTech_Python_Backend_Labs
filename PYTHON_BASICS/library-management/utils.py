@@ -152,30 +152,47 @@ def add_book(books, authors, borrows):
     print("Book added successfully.")
 
 
+def _fmt_row(widths, values):
+    return "  ".join(str(v).ljust(w) for w, v in zip(widths, values))
+
+
 def list_books(books, borrows):
-    """Display all books in a user-friendly format using __str__."""
+    """Display all books in a column-aligned table without border lines."""
     if not books:
         print("No books in the library.")
         return
-    print(f"\nBooks in library ({len(books)} total):")
-    print("-" * 80)
-    for b in books:
+    headers = ["#", "Title", "Author", "ISBN", "Category", "Type", "Year", "Copies", "Avail", "Status"]
+    rows = []
+    for i, b in enumerate(books, 1):
         available = get_available_copies(b, borrows)
-        status = "Available" if available > 0 else "Not Available"
-        print(f"{str(b)} | Available: {available} | Status: {status}")
-    print("-" * 80)
+        rows.append([
+            i, b.title, b.author.name, b.isbn,
+            b.category.value if b.category else "",
+            b.book_type.value if b.book_type else "",
+            b.year or "", b.copies, available,
+            "Available" if available > 0 else "Not Available",
+        ])
+    widths = [max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
+    print(f"\nBooks in library ({len(books)} total):")
+    print(_fmt_row(widths, headers))
+    print("  ".join("-" * w for w in widths))
+    for row in rows:
+        print(_fmt_row(widths, row))
 
 
 def list_authors(authors):
-    """Display all authors using __str__."""
+    """Display all authors in a column-aligned table without border lines."""
     if not authors:
         print("No authors found.")
         return
+    headers = ["#", "Name", "Nationality", "Birth Year"]
+    rows = [[i, a.name, a.nationality or "", a.birth_year or ""] for i, a in enumerate(authors, 1)]
+    widths = [max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
     print(f"\nAuthors ({len(authors)} total):")
-    print("-" * 40)
-    for a in authors:
-        print(str(a))
-        print("-" * 40)
+    print(_fmt_row(widths, headers))
+    print("  ".join("-" * w for w in widths))
+    for row in rows:
+        print(_fmt_row(widths, row))
 
 
 def borrow_book(books, borrows, authors):
@@ -235,17 +252,25 @@ def return_book(books, borrows, authors):
         print("No active borrow record found for this book and borrower.")
 
 
+
 def list_borrows(borrows):
-    """Display only active (unreturned) borrow records using __str__."""
+    """Display only active (unreturned) borrow records in a column-aligned table."""
     active = [b for b in borrows if not b.return_date]
     if not active:
         print("No active borrow records found.")
         return
+    headers = ["#", "Borrower", "Book Title", "Borrowed On", "Due Date", "Status"]
+    rows = [
+        [i, b.borrower_name, b.book_title, b.borrow_date, b.due_date,
+         "Overdue" if b.is_overdue() else "Borrowed"]
+        for i, b in enumerate(active, 1)
+    ]
+    widths = [max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
     print(f"\nActive Borrow records ({len(active)} total):")
-    print("-" * 80)
-    for b in active:
-        print(str(b))
-    print("-" * 80)
+    print(_fmt_row(widths, headers))
+    print("  ".join("-" * w for w in widths))
+    for row in rows:
+        print(_fmt_row(widths, row))
 
 
 def search_book_cli(books):
