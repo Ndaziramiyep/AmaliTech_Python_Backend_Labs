@@ -1,0 +1,6 @@
+# Runtime dependencies.
+#
+# The importer only uses the Python standard library (csv, json,
+# argparse, logging, dataclasses, pathlib), so there are no third-party
+# runtime dependencies. This file is kept for completeness/clarity and
+# so tooling that expects a requirements.txt has one to find.
