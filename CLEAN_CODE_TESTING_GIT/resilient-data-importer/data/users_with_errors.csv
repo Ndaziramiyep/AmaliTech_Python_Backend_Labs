@@ -1,6 +1,0 @@
-user_id,name,email
-1,Alice Uwimana,alice@example.com
-2,,bob@example.com
-3,Chantal Mukamana,not-an-email
-1,Alice Duplicate,alice2@example.com
-4,David Ndayisenga,david@example.com

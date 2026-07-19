@@ -1,6 +1,17 @@
-# Runtime dependencies.
-#
-# The importer only uses the Python standard library (csv, json,
-# argparse, logging, dataclasses, pathlib), so there are no third-party
-# runtime dependencies. This file is kept for completeness/clarity and
-# so tooling that expects a requirements.txt has one to find.
+cfgv==3.5.0
+colorama==0.4.6
+coverage==7.13.0
+distlib==0.4.0
+filelock==3.20.0
+identify==2.6.15
+iniconfig==2.3.0
+nodeenv==1.9.1
+packaging==25.0
+platformdirs==4.5.1
+pluggy==1.6.0
+pre_commit==4.5.0
+Pygments==2.19.2
+pytest==9.0.2
+pytest-cov==7.0.0
+PyYAML==6.0.3
+virtualenv==20.35.4

@@ -1,0 +1,6 @@
+user_id,name,email
+1,Alice,alice@example.com
+2,Bob,bob@example.com
+3,,invalid-email
+1,Duplicate,dup@example.com
+3,gad,gad@gmail.com
