@@ -1,8 +1,3 @@
-2025-12-16 07:43:26,990 [INFO] src.parser: Parsed 4 users
-2025-12-16 07:43:26,991 [WARNING] __main__: Duplicate user skipped
-2025-12-16 07:43:26,992 [WARNING] __main__: Duplicate user skipped
-2025-12-16 07:43:26,992 [WARNING] __main__: Validation error: User name cannot be empty.
-2025-12-16 07:43:26,992 [WARNING] __main__: Duplicate user skipped
 2026-07-19 15:37:12,492 [INFO] src.parser: Parsed 4 users
 2026-07-19 15:37:12,493 [INFO] src.storage: Added user 1 to database
 2026-07-19 15:37:12,493 [INFO] __main__: User added successfully
@@ -53,3 +48,55 @@
 2026-07-19 15:43:16,009 [WARNING] __main__: Duplicate user skipped
 2026-07-19 15:43:16,010 [INFO] src.storage: Added user 3 to database
 2026-07-19 15:43:16,010 [INFO] __main__: User added successfully
+2026-07-19 15:56:32,314 [INFO] src.parser: Parsed 5 users
+2026-07-19 15:56:32,314 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:56:32,314 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:56:32,314 [WARNING] src.storage: Attempted to add duplicate user: 2
+2026-07-19 15:56:32,315 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:56:32,315 [ERROR] src.validator: User name is missing
+2026-07-19 15:56:32,315 [WARNING] __main__: Validation error: User name is missing
+2026-07-19 15:56:32,315 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:56:32,315 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:56:32,315 [WARNING] src.storage: Attempted to add duplicate user: 3
+2026-07-19 15:56:32,315 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:10,535 [INFO] src.parser: Parsed 6 users
+2026-07-19 15:57:10,535 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:57:10,535 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:10,536 [WARNING] src.storage: Attempted to add duplicate user: 2
+2026-07-19 15:57:10,536 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:10,536 [ERROR] src.validator: User name is missing
+2026-07-19 15:57:10,536 [WARNING] __main__: Validation error: User name is missing
+2026-07-19 15:57:10,536 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:57:10,536 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:10,536 [WARNING] src.storage: Attempted to add duplicate user: 3
+2026-07-19 15:57:10,536 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:10,536 [WARNING] src.storage: Attempted to add duplicate user: 3
+2026-07-19 15:57:10,536 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:21,935 [INFO] src.parser: Parsed 6 users
+2026-07-19 15:57:21,936 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:57:21,936 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:21,936 [WARNING] src.storage: Attempted to add duplicate user: 2
+2026-07-19 15:57:21,936 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:21,936 [ERROR] src.validator: User name is missing
+2026-07-19 15:57:21,936 [WARNING] __main__: Validation error: User name is missing
+2026-07-19 15:57:21,936 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:57:21,936 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:21,936 [WARNING] src.storage: Attempted to add duplicate user: 3
+2026-07-19 15:57:21,936 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:21,937 [INFO] src.storage: Added user 4 to database
+2026-07-19 15:57:21,937 [INFO] __main__: User added successfully
+2026-07-19 15:57:57,804 [INFO] src.parser: Parsed 7 users
+2026-07-19 15:57:57,804 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:57:57,804 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:57,804 [WARNING] src.storage: Attempted to add duplicate user: 2
+2026-07-19 15:57:57,804 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:57,805 [ERROR] src.validator: User name is missing
+2026-07-19 15:57:57,805 [WARNING] __main__: Validation error: User name is missing
+2026-07-19 15:57:57,805 [WARNING] src.storage: Attempted to add duplicate user: 1
+2026-07-19 15:57:57,805 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:57,805 [WARNING] src.storage: Attempted to add duplicate user: 3
+2026-07-19 15:57:57,805 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:57,805 [WARNING] src.storage: Attempted to add duplicate user: 4
+2026-07-19 15:57:57,805 [WARNING] __main__: Duplicate user skipped
+2026-07-19 15:57:57,806 [INFO] src.storage: Added user 5 to database
+2026-07-19 15:57:57,806 [INFO] __main__: User added successfully
