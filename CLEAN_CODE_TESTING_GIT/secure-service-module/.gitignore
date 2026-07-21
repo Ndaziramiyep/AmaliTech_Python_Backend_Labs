@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Test coverage
+htmlcov/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+
+poetry.lock
