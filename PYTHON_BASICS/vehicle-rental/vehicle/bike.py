@@ -2,7 +2,6 @@
 
 from .vehicle import Vehicle
 
-
 class Bike(Vehicle):
     """A bike available for daily rental at a 10 % discount."""
 

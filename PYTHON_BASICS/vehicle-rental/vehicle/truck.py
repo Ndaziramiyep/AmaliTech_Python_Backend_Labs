@@ -6,7 +6,7 @@ from .vehicle import Vehicle
 class Truck(Vehicle):
     """A truck available for daily rental with a 15 % heavy-vehicle surcharge."""
 
-    SURCHARGE = 0.15
+    SURCHARGE = 0.15 
 
     def __init__(self, vehicle_id: str, brand: str, base_price: float) -> None:
         """

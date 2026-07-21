@@ -45,12 +45,12 @@ def main() -> None:
     """Run the Vehicle Rental System interactive CLI."""
     system = RentalSystem()
 
-    # Seed sample vehicles so the system is usable immediately
+    
+# Seed sample vehicles so the system is usable immediately
     system.add_vehicle(Car("C001", "Toyota", 50.0))
     system.add_vehicle(Car("C002", "Honda", 45.0))
     system.add_vehicle(Bike("B001", "Yamaha", 20.0))
     system.add_vehicle(Truck("T001", "Ford", 100.0))
-
     menu = (
         "\n--- Vehicle Rental System ---\n"
         "1. Show all vehicles\n"

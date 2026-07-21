@@ -44,7 +44,7 @@ class Employee(ABC):
         return f"{self.role()} | {self.emp_id} — {self.name}"
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(emp_id={self.emp_id!r}, name={self.name!r})"
+        return f"{self.__class__.__name__}(emp_id={self.emp_id!r }, name={self.name!r})"
 
 
 class FullTimeEmployee(Employee):
