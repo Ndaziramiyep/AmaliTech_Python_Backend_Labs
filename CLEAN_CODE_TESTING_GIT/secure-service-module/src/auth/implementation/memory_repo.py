@@ -14,7 +14,11 @@ class InMemoryUserRepository(UserRepository):
 
     Example:
         >>> repo = InMemoryUserRepository()
-        >>> user = User(username="Patrick", email="patrick@example.com", password_hash="hashed")
+        >>> user = User(
+        ...     username="Patrick",
+        ...     email="patrick@example.com",
+        ...     password_hash="hashed",
+        ... )
         >>> repo.add(user)
         >>> repo.get_by_email("patrick@example.com") == user
         True

@@ -53,7 +53,9 @@ class UserService:
             InvalidPasswordError: If the password is shorter than 7 characters.
 
         Example:
-            >>> user = service.register_user("Patrick", "patrick@example.com", "Patrick")
+            >>> user = service.register_user(
+            ...     "Patrick", "patrick@example.com", "Patrick"
+            ... )
             >>> print(user.username)
             Patrick
         """

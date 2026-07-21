@@ -30,11 +30,13 @@ def test_register_user_success(mocker):
 
 
 def test_register_user_duplicate(mocker):
-    """Test that registering a user with an existing email raises UserAlreadyExistsError."""
+    """Test that duplicate email registration raises UserAlreadyExistsError."""
     mock_repo = mocker.Mock()
     mock_hasher = mocker.Mock()
     mock_repo.get_by_email.return_value = User(
-        username="Patrick", email="patrick@example.com", password_hash="hashed_password"
+        username="Patrick",
+        email="patrick@example.com",
+        password_hash="hashed_password",
     )
 
     service = UserService(user_repository=mock_repo, password_hasher=mock_hasher)
