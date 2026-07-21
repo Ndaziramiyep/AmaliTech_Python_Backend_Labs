@@ -79,10 +79,10 @@ hasher = BcryptPasswordHasher()
 service = UserService(user_repository=repo, password_hasher=hasher)
 
 # Register user
-user = service.register_user("diane", "SecurePass123")
+user = service.register_user("patrick", "SecurePass123")
 
 # Verify credentials
-success = service.verify_user("diane", "SecurePass123")
+success = service.verify_user("patrick", "SecurePass123")
 print("Login success:", success)
 ```
 
