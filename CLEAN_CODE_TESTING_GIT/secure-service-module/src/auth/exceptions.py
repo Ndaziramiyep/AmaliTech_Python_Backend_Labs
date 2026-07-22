@@ -3,7 +3,7 @@
 
 class UserAlreadyExistsError( Exception ):
     """Raised when attempting to register a user with an email that already exists.
-
+                 see the example below for usage.
     Example:
         >>> raise UserAlreadyExistsError(
         ...     "User with email 'patrick@example.com' already exists."
