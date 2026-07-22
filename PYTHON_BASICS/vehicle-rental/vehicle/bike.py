@@ -2,6 +2,7 @@
 
 from .vehicle import Vehicle
 
+
 class Bike(Vehicle):
     """A bike available for daily rental at a 10 % discount."""
 
@@ -23,7 +24,9 @@ class Bike(Vehicle):
         print("Bike Details:")
         print(f"  Vehicle ID : {self.vehicle_id}")
         print(f"  Brand      : {self.brand}")
-        print(f"  Rate/Day   : ${self.base_price} ({int(self.DISCOUNT * 100)}% discount applied)")
+        print(
+            f"  Rate/Day   : ${self.base_price} ({int(self.DISCOUNT * 100)}% discount applied)"
+        )
         print(f"  Status     : {'Rented' if self.is_rented else 'Available'}")
 
     def calculate_rental_cost(self, days: int) -> float:

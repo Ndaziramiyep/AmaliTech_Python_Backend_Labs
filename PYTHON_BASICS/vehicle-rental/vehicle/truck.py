@@ -6,7 +6,7 @@ from .vehicle import Vehicle
 class Truck(Vehicle):
     """A truck available for daily rental with a 15 % heavy-vehicle surcharge."""
 
-    SURCHARGE = 0.15 
+    SURCHARGE = 0.15
 
     def __init__(self, vehicle_id: str, brand: str, base_price: float) -> None:
         """
@@ -24,7 +24,9 @@ class Truck(Vehicle):
         print("Truck Details:")
         print(f"  Vehicle ID : {self.vehicle_id}")
         print(f"  Brand      : {self.brand}")
-        print(f"  Rate/Day   : ${self.base_price} ({int(self.SURCHARGE * 100)}% surcharge applied)")
+        print(
+            f"  Rate/Day   : ${self.base_price} ({int(self.SURCHARGE * 100)}% surcharge applied)"
+        )
         print(f"  Status     : {'Rented' if self.is_rented else 'Available'}")
 
     def calculate_rental_cost(self, days: int) -> float:

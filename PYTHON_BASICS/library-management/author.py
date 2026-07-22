@@ -17,7 +17,9 @@ class Author(LibraryResource):
             except (ValueError, TypeError):
                 raise ValueError("Birth year must be a number")
             if birth_year < 1 or birth_year > date.today().year:
-                raise ValueError(f"Birth year must be between 1 and {date.today().year}")
+                raise ValueError(
+                    f"Birth year must be between 1 and {date.today().year}"
+                )
         super().__init__(name)
         self.name = name.strip()
         self.nationality = nationality

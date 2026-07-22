@@ -22,7 +22,9 @@ class Employee(ABC):
     @base_salary.setter
     def base_salary(self, value: float) -> None:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"base_salary must be a number, got {type(value).__name__}.")
+            raise ValueError(
+                f"base_salary must be a number, got {type(value).__name__}."
+            )
         if value <= 0:
             raise ValueError(f"base_salary must be > 0, got {value}.")
         self._base_salary = float(value)
@@ -50,7 +52,9 @@ class Employee(ABC):
 class FullTimeEmployee(Employee):
     """Salaried employee; gross = base_salary + bonus."""
 
-    def __init__(self, emp_id: str, name: str, base_salary: float, bonus: float = 0.0) -> None:
+    def __init__(
+        self, emp_id: str, name: str, base_salary: float, bonus: float = 0.0
+    ) -> None:
         super().__init__(emp_id, name, base_salary)
         self.bonus = bonus
 
@@ -80,7 +84,9 @@ class FullTimeEmployee(Employee):
 class ContractEmployee(Employee):
     """Hourly-paid employee; gross = hourly_rate × hours_worked."""
 
-    def __init__(self, emp_id: str, name: str, hourly_rate: float, hours_worked: float) -> None:
+    def __init__(
+        self, emp_id: str, name: str, hourly_rate: float, hours_worked: float
+    ) -> None:
         super().__init__(emp_id, name, hourly_rate)
         self.hours_worked = hours_worked
 
@@ -95,7 +101,9 @@ class ContractEmployee(Employee):
     @hours_worked.setter
     def hours_worked(self, value: float) -> None:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"hours_worked must be a number, got {type(value).__name__}.")
+            raise ValueError(
+                f"hours_worked must be a number, got {type(value).__name__}."
+            )
         if value < 0:
             raise ValueError(f"hours_worked must be >= 0, got {value}.")
         self._hours_worked = float(value)
