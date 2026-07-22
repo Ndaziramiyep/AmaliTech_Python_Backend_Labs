@@ -3,19 +3,16 @@ repos:
     rev: 23.7.0
     hooks:
       - id: black
-        files: ^(src|tests)/
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     rev: v0.0.284
     hooks:
       - id: ruff
-        files: ^(src|tests)/
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.5.1
     hooks:
       - id: mypy
-        files: ^src/
         args: [--explicit-package-bases, --ignore-missing-imports]
 
   - repo: local
