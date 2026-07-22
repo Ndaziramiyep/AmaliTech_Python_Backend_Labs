@@ -1,7 +1,7 @@
 """Custom exceptions for the auth module."""
 
 
-class UserAlreadyExistsError( Exception ):
+class UserAlreadyExistsError(Exception):
     """Raised when attempting to register a user with an email that already exists.
                  see the example below for usage.
     Example:
