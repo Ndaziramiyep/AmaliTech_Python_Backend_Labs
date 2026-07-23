@@ -1,4 +1,4 @@
-"""BcryptPasswordHasher — bcrypt-based implementation of PasswordHasher."""
+"""BcryptPasswordHasher -- bcrypt-based implementation of PasswordHasher."""
 
 import bcrypt
 
@@ -13,8 +13,8 @@ class BcryptPasswordHasher(PasswordHasher):
 
     Example:
         >>> hasher = BcryptPasswordHasher()
-        >>> hashed = hasher.hash_password("Patrick")
-        >>> hasher.verify_password("Patrick", hashed)
+        >>> hashed = hasher.hash_password("SecurePass1")
+        >>> hasher.verify_password("SecurePass1", hashed)
         True
     """
 
@@ -40,7 +40,4 @@ class BcryptPasswordHasher(PasswordHasher):
         Returns:
             True if the password matches the hash, False otherwise.
         """
-        return bcrypt.checkpw(
-            password.encode("utf-8"),
-            hashed.encode("utf-8"),
-        )
+        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))

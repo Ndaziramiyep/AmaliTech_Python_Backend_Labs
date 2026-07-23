@@ -9,8 +9,8 @@ from src.auth.models import User
 class UserRepository(ABC):
     """Abstract interface for user storage and retrieval.
 
-    Concrete implementations can use any backend (in-memory, SQL, NoSQL, etc.)
-    as long as they satisfy this contract.
+    Concrete implementations can use any backend (in-memory, SQL, NoSQL,
+    etc.) as long as they satisfy this contract.
     """
 
     @abstractmethod

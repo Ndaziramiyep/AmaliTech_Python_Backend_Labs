@@ -1,4 +1,4 @@
-"""InMemoryUserRepository — in-memory implementation of UserRepository."""
+"""InMemoryUserRepository -- in-memory implementation of UserRepository."""
 
 from typing import Optional
 
@@ -14,13 +14,9 @@ class InMemoryUserRepository(UserRepository):
 
     Example:
         >>> repo = InMemoryUserRepository()
-        >>> user = User(
-        ...     username="Patrick",
-        ...     email="patrick@example.com",
-        ...     password_hash="hashed",
-        ... )
+        >>> user = User(username="Patrick", email="patrick@gmail.com", password_hash="h")
         >>> repo.add(user)
-        >>> repo.get_by_email("patrick@example.com") == user
+        >>> repo.get_by_email("patrick@gmail.com") == user
         True
     """
 

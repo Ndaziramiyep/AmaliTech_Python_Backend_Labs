@@ -1,22 +1,38 @@
 # tests/test_main.py
 
+import pytest
+
 from main import main
 
 
-def test_main_exit(monkeypatch):
-    # Simulate user input: API key, then "exit"
+def test_main_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     inputs = iter(["valid_key", "exit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
-
-    # Run main (should exit immediately after "exit")
     main()
 
 
-def test_main_valid_city(monkeypatch, capsys):
+def test_main_valid_city(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     inputs = iter(["valid_key", "Kigali", "exit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
-
     main()
+    assert "Forecast for Kigali" in capsys.readouterr().out
 
-    captured = capsys.readouterr()
-    assert "Forecast for Kigali" in captured.out
+
+def test_main_unknown_city(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inputs = iter(["valid_key", "Atlantis", "exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    main()
+    assert "not found" in capsys.readouterr().out
+
+
+def test_main_invalid_api_key(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inputs = iter(["wrong_key", "Kigali", "exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    main()
+    assert "Invalid API key" in capsys.readouterr().out
