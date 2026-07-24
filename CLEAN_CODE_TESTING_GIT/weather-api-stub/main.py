@@ -2,11 +2,14 @@ from src.exceptions import CityNotFoundError, InvalidAPIKeyError
 from src.provider.mock import MockWeatherProvider
 from src.service import WeatherService
 
+# Embedded API key: the mock provider only ever validates against this
+# constant, so there's nothing secret for a user to supply at the prompt.
+API_KEY = "valid_key"
+
 
 def main() -> None:
     print("=== Weather API Stub CLI ===")
-    api_key = input("Enter API key (default='valid_key'): ").strip() or "valid_key"
-    provider = MockWeatherProvider(api_key=api_key)
+    provider = MockWeatherProvider(api_key=API_KEY)
     service = WeatherService(provider)
 
     while True:
