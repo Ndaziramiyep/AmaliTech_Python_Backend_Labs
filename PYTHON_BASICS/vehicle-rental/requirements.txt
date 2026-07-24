@@ -1,2 +1,1 @@
-# No third-party dependencies required.
-# Python >= 3.10 needed for `X | Y` union type hints.
+# This file Lists the packages the project needs

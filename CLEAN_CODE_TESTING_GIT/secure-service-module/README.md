@@ -1,62 +1,28 @@
-# Secure Service Module
+# Secure Service Module with TDD
 
-A backend Python authentication library built with **Test-Driven Development (TDD)**, **SOLID principles**, and **dependency injection**. It handles user registration, login, and password security — with no web framework or database required.
+> **Assessment:** Clean Code, Testing & Git | **Complexity:** Medium | **Estimated Time:** 6-10 hours
+
+## Overview
+
+A secure, standalone **User Authentication Service Module** — a reusable
+library responsible for user registration and credential verification. It
+handles password hashing, enforces a password policy, and prevents
+duplicate registrations.
+
+The core logic (`src/auth/`) is a plain, framework-free Python library built
+strictly via TDD with 100% test coverage. A thin **FastAPI** layer
+(`src/api/`) sits on top of it purely as a delivery mechanism, so the
+library itself stays fully decoupled and unit-testable in isolation.
 
 ---
 
-## How It Works
+## Project Objectives
 
-The library is built around three core ideas:
-
-### 1. Interfaces (Abstractions)
-Two abstract base classes define the contracts the system depends on:
-
-- `UserRepository` — defines how users are stored and retrieved (`add`, `get_by_email`)
-- `PasswordHasher` — defines how passwords are hashed and verified (`hash_password`, `verify_password`)
-
-These are defined in `src/auth/interfaces.py`. The service never depends on a specific database or hashing library — only on these interfaces.
-
-### 2. UserService (Core Logic)
-`src/auth/service.py` contains the `UserService` class. It receives a `UserRepository` and a `PasswordHasher` via its constructor (dependency injection) and exposes two methods:
-
-**`register_user(username, email, password) → User`**
-1. Checks if the email already exists in the repository — raises `UserAlreadyExistsError` if it does
-2. Validates the password is at least 8 characters — raises `InvalidPasswordError` if not
-3. Hashes the password using the injected hasher
-4. Creates a `User` object with a auto-generated UUID
-5. Saves the user to the repository
-6. Logs the event and returns the user
-
-**`verify_user(email, password) → bool`**
-1. Looks up the user by email — raises `UserNotFoundError` if not found
-2. Verifies the plain password against the stored hash — raises `InvalidPasswordError` if wrong
-3. Logs the outcome and returns `True` on success
-
-### 3. Implementations (Concrete Classes)
-Two ready-to-use implementations are provided in `src/auth/implementation/`:
-
-- `InMemoryUserRepository` — stores users in a Python dictionary (for testing and demos)
-- `BcryptPasswordHasher` — hashes and verifies passwords using the `bcrypt` library
-
-### 4. Data Model
-`src/auth/models.py` defines the `User` dataclass:
-
-```
-User
-├── id            → auto-generated UUID string
-├── username      → display name
-├── email         → unique identifier
-└── password_hash → bcrypt hash (plain password is never stored)
-```
-
-### 5. Exceptions
-`src/auth/exceptions.py` defines three custom exceptions:
-
-| Exception | When it's raised |
-|---|---|
-| `UserAlreadyExistsError` | Email already registered |
-| `UserNotFoundError` | Email not found during login |
-| `InvalidPasswordError` | Password too short or wrong on login |
+- Build a secure, reusable module following a strict TDD process
+- Apply SOLID principles to create a decoupled and testable service layer
+- Achieve 100% test coverage on the core business logic
+- Use modern Python features like type hints and context managers effectively
+- Follow a standard Git workflow with code reviews and automated quality checks
 
 ---
 
@@ -65,210 +31,306 @@ User
 ```
 secure-service-module/
 ├── src/
-│   └── auth/
-│       ├── implementation/
-│       │   ├── bcrypt_hasher.py   # bcrypt password hashing
-│       │   └── memory_repo.py     # in-memory user storage
-│       ├── exceptions.py          # custom exceptions
-│       ├── interfaces.py          # abstract base classes
-│       ├── models.py              # User dataclass
-│       └── service.py             # core business logic
+│   ├── auth/                       # Core library -- framework-free, 100% covered
+│   │   ├── implementation/
+│   │   │   ├── __init__.py
+│   │   │   ├── bcrypt_hasher.py     # BcryptPasswordHasher
+│   │   │   └── memory_repo.py       # InMemoryUserRepository
+│   │   ├── __init__.py
+│   │   ├── exceptions.py            # Custom exceptions
+│   │   ├── interfaces.py            # Abstract base classes
+│   │   ├── models.py                # User dataclass
+│   │   └── service.py               # UserService (core logic)
+│   └── api/                        # Thin FastAPI wrapper over UserService
+│       ├── __init__.py
+│       ├── main.py                  # FastAPI app, routes, DI wiring
+│       └── schemas.py               # Pydantic request/response models
 ├── tests/
-│   ├── test_implementation.py     # end-to-end test with real implementations
-│   ├── test_interface.py          # interface contract coverage
-│   ├── test_login.py              # login flow tests
-│   ├── test_registration.py       # registration flow tests
-│   ├── test_security.py           # password security tests
-│   └── user_registration.py       # additional registration scenarios
-├── docs/
-│   ├── architecture.md
-│   ├── modules.md
-│   ├── testing.md
-│   └── usage.md
+│   ├── __init__.py
+│   ├── test_models.py
+│   ├── test_interfaces.py
+│   ├── test_registration.py
+│   ├── test_login.py
+│   ├── test_validation.py
+│   ├── test_timing.py
+│   ├── test_implementations.py
+│   ├── test_end_to_end.py
+│   └── test_api.py
 ├── pyproject.toml
 ├── requirements.txt
-└── .pre-commit-config.yaml
+├── .gitignore
+├── .pre-commit-config.yaml
+└── README.md
 ```
+
+---
+
+## Architecture & SOLID Design
+
+`UserService` is the core entry point. It depends on two abstractions
+defined in `interfaces.py`:
+
+- `UserRepository` — abstract interface for user storage (`get_by_email`, `add`)
+- `PasswordHasher` — abstract interface for hashing and verification
+  (`hash_password`, `verify_password`)
+
+Concrete implementations are injected at construction time:
+
+| Interface        | Concrete Implementation  | Location                                   |
+|-------------------|---------------------------|---------------------------------------------|
+| `UserRepository`  | `InMemoryUserRepository`  | `src/auth/implementation/memory_repo.py`    |
+| `PasswordHasher`  | `BcryptPasswordHasher`    | `src/auth/implementation/bcrypt_hasher.py`  |
+
+This dependency injection pattern means `UserService` can be tested in
+complete isolation using mocks — no real database or hashing needed in unit
+tests (see `tests/test_registration.py` and `tests/test_login.py`, which
+mock both dependencies with `pytest-mock`).
+
+```
+UserService
+    ├── depends on → UserRepository (ABC)
+    │                   └── implemented by → InMemoryUserRepository
+    └── depends on → PasswordHasher (ABC)
+                        └── implemented by → BcryptPasswordHasher
+
+src/api/main.py
+    └── depends on → UserService (constructed with the concrete
+                      implementations above, injected via FastAPI's
+                      Depends())
+```
+
+**Why this matters:** swapping `InMemoryUserRepository` for a real
+database-backed repository — or bcrypt for another hashing algorithm —
+requires touching only the concrete implementation and the one line that
+constructs `UserService`. `UserService` itself, and every test that mocks
+its dependencies, is completely unaffected.
+
+### Modern Python features
+
+- **Type hints** throughout the public API and Pydantic schemas.
+- **Dataclasses** for the `User` model.
+- **Context manager**: `_timed_operation` (in `service.py`) is a
+  `@contextlib.contextmanager`-based timer wrapping `register_user` and
+  `verify_user`. It logs a structured `DEBUG` start/finish event with the
+  operation's duration in milliseconds, whether the operation succeeds or
+  raises — a `try/finally` inside the context manager guarantees the
+  "finished" log always fires.
+
+---
+
+## Error Handling & Security
+
+- **Custom exceptions** (`src/auth/exceptions.py`): `UserAlreadyExistsError`,
+  `UserNotFoundError`, `InvalidPasswordError`.
+- **Input validation**: blank usernames and malformed emails raise a plain
+  `ValueError` before any repository lookup happens (fail fast).
+- **Password hashing**: `BcryptPasswordHasher` uses bcrypt with a fresh
+  salt per call — plain-text passwords are never stored.
+- **Password policy**: registration requires a password of at least 8
+  characters (`InvalidPasswordError` otherwise).
+- **Structured logging**: registration and login attempts (success and
+  failure) are logged at `INFO` with `extra={"email": ...}`.
 
 ---
 
 ## Requirements
 
 - Python 3.11+
-- pip or poetry
+- Dependencies listed in `requirements.txt`:
+
+```
+bcrypt==5.0.0
+fastapi==0.139.2
+uvicorn==0.51.0
+pluggy==1.6.0
+pytest==9.1.1
+pytest-mock==3.15.1
+pytest-cov==7.1.0
+coverage==7.15.2
+httpx==0.28.1
+black==25.12.0
+ruff==0.14.14
+mypy==1.20.2
+```
 
 ---
 
-## Setup and Installation
-
-### Step 1 — Clone the repository
+## Setup & Installation
 
 ```bash
-git clone https://github.com/Ndaziramiyep/AmaliTech_Python_Backend_Labs.git
-cd AmaliTech_Python_Backend_Labs/CLEAN_CODE_TESTING_GIT/secure-service-module
-```
+git clone <repository-url>
+cd secure-service-module
 
-### Step 2 — Create and activate a virtual environment
-
-```bash
-# Create
 python -m venv venv
+venv\Scripts\activate          # Windows
+source venv/bin/activate       # macOS/Linux
 
-# Activate on Windows
-venv\Scripts\activate
-
-# Activate on macOS/Linux
-source venv/bin/activate
-```
-
-### Step 3 — Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-## How to Run the Tests
+## Running the Tests
 
-All tests live in the `tests/` folder and use `pytest`.
-
-### Run all tests
+Coverage runs automatically (configured in `pyproject.toml`):
 
 ```bash
-pytest tests/
+pytest
 ```
 
-### Run with coverage report
+**Expected output:**
 
-```bash
-pytest --cov=src/auth tests/
+```
+================================ test session starts =================================
+collected 45 items
+
+tests/test_api.py .......                                                      [ 15%]
+tests/test_end_to_end.py .                                                     [ 17%]
+tests/test_implementations.py .....                                           [ 28%]
+tests/test_interfaces.py ....                                                 [ 37%]
+tests/test_login.py ......                                                    [ 51%]
+tests/test_models.py ..                                                       [ 55%]
+tests/test_registration.py .....                                              [ 66%]
+tests/test_timing.py ..                                                       [ 71%]
+tests/test_validation.py .............                                       [100%]
+
+=================================== tests coverage ====================================
+Name                                       Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------
+src\auth\__init__.py                           0      0   100%
+src\auth\exceptions.py                         3      0   100%
+src\auth\implementation\__init__.py            0      0   100%
+src\auth\implementation\bcrypt_hasher.py       8      0   100%
+src\auth\implementation\memory_repo.py        10      0   100%
+src\auth\interfaces.py                        13      0   100%
+src\auth\models.py                             8      0   100%
+src\auth\service.py                           59      0   100%
+------------------------------------------------------------------------
+TOTAL                                        101      0   100%
+=========================== 45 passed in X.XXs ============================
 ```
 
-### Run a specific test file
-
-```bash
-pytest tests/test_registration.py
-pytest tests/test_login.py
-pytest tests/test_security.py
-```
-
-### Run a specific test by name
-
-```bash
-pytest tests/test_registration.py::test_register_user_success
-```
-
-> Tests use `pytest-mock` to mock the repository and hasher, so no real database or bcrypt calls are made in unit tests. The only test that uses real implementations is `test_implementation.py::test_end_to_end_registration_and_login`.
+Run a specific file: `pytest tests/test_registration.py -v`
 
 ---
 
-## Using the Library in Your Code
+## Running the API
+
+```bash
+uvicorn src.api.main:app --reload
+```
+
+Interactive docs (Swagger UI) at `http://127.0.0.1:8000/docs` — you can
+register and log in directly from the browser. Or via curl:
+
+```bash
+curl -X POST http://127.0.0.1:8000/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "Patrick", "email": "patrick@gmail.com", "password": "SecurePass1"}'
+# -> 201 {"id": "<uuid>", "username": "Patrick", "email": "patrick@gmail.com"}
+
+curl -X POST http://127.0.0.1:8000/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "patrick@gmail.com", "password": "SecurePass1"}'
+# -> 200 {"success": true}
+```
+
+| Endpoint         | Success | Failure cases                                                     |
+|------------------|---------|---------------------------------------------------------------------|
+| `POST /register` | `201`   | `400` blank username / malformed email / password too short, `409` email already registered |
+| `POST /login`    | `200`   | `400` malformed email, `404` unknown email, `401` wrong password    |
+
+Note: `InMemoryUserRepository` is process-local, so registered users are
+lost on restart — swap it for a real database-backed `UserRepository` for
+persistence, without changing `UserService` or the routes.
+
+---
+
+## Using the Library Directly (no HTTP)
 
 ```python
 from src.auth.service import UserService
 from src.auth.implementation.memory_repo import InMemoryUserRepository
 from src.auth.implementation.bcrypt_hasher import BcryptPasswordHasher
 
-# Wire up dependencies
-repo = InMemoryUserRepository()
-hasher = BcryptPasswordHasher()
-service = UserService(user_repository=repo, password_hasher=hasher)
+service = UserService(InMemoryUserRepository(), BcryptPasswordHasher())
 
-# Register a new user
-user = service.register_user("Diane", "diane@example.com", "SecurePass123")
-print(user.id)        # auto-generated UUID
-print(user.username)  # Diane
-print(user.email)     # diane@example.com
+user = service.register_user("Patrick", "patrick@gmail.com", "SecurePass1")
+print(f"Registered: {user.username}, ID: {user.id}")
 
-# Login / verify credentials
-result = service.verify_user("diane@example.com", "SecurePass123")
-print(result)  # True
+success = service.verify_user("patrick@gmail.com", "SecurePass1")
+print("Login success:", success)
 ```
 
-### Handling exceptions
+### Exception handling
 
 ```python
-from src.auth.exceptions import (
-    UserAlreadyExistsError,
-    UserNotFoundError,
-    InvalidPasswordError,
-)
+from src.auth.exceptions import UserAlreadyExistsError, UserNotFoundError, InvalidPasswordError
 
 try:
-    service.register_user("Diane", "diane@example.com", "SecurePass123")
-except UserAlreadyExistsError:
-    print("Email already registered.")
-except InvalidPasswordError:
-    print("Password must be at least 8 characters.")
+    service.register_user("Patrick", "patrick@gmail.com", "SecurePass1")
+except UserAlreadyExistsError as e:
+    print(e)  # User with email 'patrick@gmail.com' already exists.
 
 try:
-    service.verify_user("diane@example.com", "WrongPassword")
-except UserNotFoundError:
-    print("No account found with that email.")
-except InvalidPasswordError:
-    print("Incorrect password.")
+    service.verify_user("patrick@gmail.com", "WrongPassword")
+except InvalidPasswordError as e:
+    print(e)  # Invalid password.
+
+try:
+    service.verify_user("unknown@gmail.com", "AnyPassword")
+except UserNotFoundError as e:
+    print(e)  # No user found with email 'unknown@gmail.com'.
+
+try:
+    service.register_user("Patrick", "not-an-email", "SecurePass1")
+except ValueError as e:
+    print(e)  # 'not-an-email' is not a valid email address.
 ```
 
 ---
 
-## Extending the Library
+## Pre-commit Hooks
 
-Because the service depends on interfaces, not concrete classes, you can swap implementations without touching any business logic.
-
-**Example: plug in a real database repository**
-
-```python
-from src.auth.interfaces import UserRepository
-from src.auth.models import User
-
-class PostgresUserRepository(UserRepository):
-    def get_by_email(self, email: str):
-        # query your database here
-        ...
-
-    def add(self, user: User) -> None:
-        # insert into your database here
-        ...
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
 ```
 
-Then pass it to `UserService` the same way:
-
-```python
-service = UserService(user_repository=PostgresUserRepository(), password_hasher=BcryptPasswordHasher())
-```
+Runs Black, ruff, and mypy on every commit; the full pytest suite runs on
+`pre-push`.
 
 ---
 
 ## Git Workflow
 
-Branches follow a feature-branch workflow:
+- **Feature branches**: `feature/registration`, `feature/login`
+- **Commit messages** reflect the TDD cycle: `test: ...`, `feat: ...`, `refactor: ...`
+- All new code is introduced via Pull Requests with a simulated code review
 
-```
-main          ← stable, production-ready
-developer     ← integration branch
-feature/*     ← individual feature branches
-```
+---
 
-Commit message convention follows the TDD cycle:
+## Grading Criteria
 
-```
-test: add failing test for duplicate email
-feat: raise UserAlreadyExistsError on duplicate registration
-refactor: extract password validation into helper
-```
-
-Pre-commit hooks enforce `black` (formatting), `ruff` (linting), and `mypy` (type checking) before every commit.
+| Criteria | Points | Description |
+|----------|--------|-------------|
+| Feature Implementation | 20 | Authentication module correctly handles registration and login securely |
+| Code Quality & Structure | 15 | Flawless execution of SOLID principles, especially dependency injection |
+| Best Practices & Patterns | 15 | Strict TDD process followed; strong password hashing and logging |
+| Testing & Validation | 20 | 100% test coverage on core logic; excellent use of mocking and pytest |
+| Documentation & Comments | 10 | Professional-level docstrings and a clear architectural overview in README |
+| Final Integration & Output Quality | 20 | The module is a high-quality, reusable, and thoroughly tested library |
+| **Total** | **100** | |
 
 ---
 
 ## Features
 
-- Secure password hashing with bcrypt (plain passwords are never stored)
-- Duplicate email prevention on registration
-- Custom exceptions for all failure cases
-- Full unit test coverage with mocks
-- End-to-end integration test with real implementations
-- Structured logging on registration and login events
-- Type-annotated codebase with mypy support
-- Easily extensible via interface-based design
+- Secure password hashing with bcrypt
+- In-memory user repository (swappable for a real database)
+- Custom exception handling + input validation
+- 100% test coverage on core logic (`src/auth`)
+- Structured logging, including operation timing via a context manager
+- Thin FastAPI layer for HTTP access, fully decoupled from the core library
+- Type hints validated with mypy; formatting/linting via Black and ruff

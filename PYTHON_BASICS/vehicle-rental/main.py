@@ -50,7 +50,6 @@ def main() -> None:
     system.add_vehicle(Car("C002", "Honda", 45.0))
     system.add_vehicle(Bike("B001", "Yamaha", 20.0))
     system.add_vehicle(Truck("T001", "Ford", 100.0))
-
     menu = (
         "\n--- Vehicle Rental System ---\n"
         "1. Show all vehicles\n"

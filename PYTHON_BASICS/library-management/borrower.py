@@ -12,7 +12,14 @@ DATA_FILE.parent.mkdir(exist_ok=True)
 class Borrow(LibraryResource):
     """Represents a book borrowing record."""
 
-    def __init__(self, borrower_name, book_title, borrow_date=None, return_date=None, due_date=None):
+    def __init__(
+        self,
+        borrower_name,
+        book_title,
+        borrow_date=None,
+        return_date=None,
+        due_date=None,
+    ):
         if not borrower_name or not str(borrower_name).strip():
             raise ValueError("Borrower name cannot be empty")
         if not book_title or not str(book_title).strip():
@@ -33,7 +40,11 @@ class Borrow(LibraryResource):
         self.return_date = date.today()
 
     def __str__(self):
-        status = "Returned" if self.return_date else ("Overdue" if self.is_overdue() else "Borrowed")
+        status = (
+            "Returned"
+            if self.return_date
+            else ("Overdue" if self.is_overdue() else "Borrowed")
+        )
         return (
             f"  [Borrow] Borrower: {self.borrower_name} | Book: {self.book_title} "
             f"| Borrowed: {self.borrow_date} | Due: {self.due_date} "
@@ -59,6 +70,7 @@ class Borrow(LibraryResource):
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _safe_int(value):
     """Return int(value) or None if value is not a valid integer."""
     try:
@@ -75,6 +87,7 @@ def _parse_date(value):
 
 
 # ── serialization ─────────────────────────────────────────────────────────────
+
 
 def _serialize_book(book):
     """Convert a Book object to a JSON-serializable dict."""
@@ -152,6 +165,7 @@ def _deserialize_borrow(data):
 
 # ── public I/O ────────────────────────────────────────────────────────────────
 
+
 def load_data():
     """Load books, authors, and borrows from library.json."""
     if not DATA_FILE.exists() or DATA_FILE.stat().st_size == 0:
@@ -163,12 +177,12 @@ def load_data():
     borrows = [_deserialize_borrow(b) for b in data.get("borrows", [])]
     return books, authors, borrows
 
+
 def save_data(books, authors, borrows):
     """Save books, authors, and borrows to library.json."""
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(
             {
-                
                 "books": [_serialize_book(b) for b in books],
                 "authors": [_serialize_author(a) for a in authors],
                 "borrows": [_serialize_borrow(b) for b in borrows],
