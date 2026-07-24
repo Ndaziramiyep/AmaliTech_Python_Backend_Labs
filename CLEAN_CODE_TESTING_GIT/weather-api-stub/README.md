@@ -63,7 +63,6 @@ pytest --cov=src --cov-report=term-missing -v
 
 ```
 === Weather API Stub CLI ===
-Enter API key (default='valid_key'): valid_key
 
 Enter city name (or 'exit' to quit): Kigali
 INFO: Forecast request received for city=Kigali

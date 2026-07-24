@@ -3,19 +3,19 @@ repos:
     rev: 25.12.0
     hooks:
       - id: black
-        files: ^CLEAN_CODE_TESTING_GIT/secure-service-module/(src|tests)/
+        files: ^CLEAN_CODE_TESTING_GIT/secure-service-module/((src|tests)/|main\.py$)
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.14
     hooks:
       - id: ruff
-        files: ^CLEAN_CODE_TESTING_GIT/secure-service-module/(src|tests)/
+        files: ^CLEAN_CODE_TESTING_GIT/secure-service-module/((src|tests)/|main\.py$)
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.20.2
     hooks:
       - id: mypy
-        files: ^CLEAN_CODE_TESTING_GIT/secure-service-module/src/
+        files: ^CLEAN_CODE_TESTING_GIT/secure-service-module/(src/|main\.py$)
         args: [--explicit-package-bases, --ignore-missing-imports]
 
   - repo: local

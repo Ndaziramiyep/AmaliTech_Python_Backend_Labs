@@ -18,5 +18,5 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        additional_dependencies: [pytest]
+        additional_dependencies: [pytest, pytest-mock]
         files: ^CLEAN_CODE_TESTING_GIT/weather-api-stub/
