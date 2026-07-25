@@ -1,5 +1,8 @@
 """Tests for the concrete UserRepository and PasswordHasher implementations."""
 
+import pytest
+
+from src.auth.exceptions import InvalidPasswordError
 from src.auth.implementation.bcrypt_hasher import BcryptPasswordHasher
 from src.auth.implementation.memory_repo import InMemoryUserRepository
 from src.auth.models import User
@@ -8,7 +11,7 @@ from src.auth.models import User
 def test_memory_repository_returns_none_for_unknown_email():
     """A repository with no users returns None for any lookup."""
     repo = InMemoryUserRepository()
-    assert repo.get_by_email("nobody@gmail.com") is None
+    assert repo.get_user_by_email("nobody@gmail.com") is None
 
 
 def test_memory_repository_stores_and_retrieves_by_email():
@@ -16,9 +19,9 @@ def test_memory_repository_stores_and_retrieves_by_email():
     repo = InMemoryUserRepository()
     user = User(username="Patrick", email="patrick@gmail.com", password_hash="h")
 
-    repo.add(user)
+    repo.add_user(user)
 
-    assert repo.get_by_email("patrick@gmail.com") is user
+    assert repo.get_user_by_email("patrick@gmail.com") is user
 
 
 def test_bcrypt_hasher_produces_a_different_string_than_the_password():
@@ -35,12 +38,13 @@ def test_bcrypt_hasher_verifies_the_correct_password():
     hasher = BcryptPasswordHasher()
     hashed = hasher.hash_password("SecurePass1")
 
-    assert hasher.verify_password("SecurePass1", hashed) is True
+    assert hasher.verify_password("SecurePass1", hashed) is None
 
 
 def test_bcrypt_hasher_rejects_the_wrong_password():
-    """A different password fails verification against an existing hash."""
+    """A different password raises InvalidPasswordError against an existing hash."""
     hasher = BcryptPasswordHasher()
     hashed = hasher.hash_password("SecurePass1")
 
-    assert hasher.verify_password("WrongPassword", hashed) is False
+    with pytest.raises(InvalidPasswordError):
+        hasher.verify_password("WrongPassword", hashed)

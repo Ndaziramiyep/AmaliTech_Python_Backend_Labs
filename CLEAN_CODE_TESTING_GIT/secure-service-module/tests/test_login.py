@@ -16,8 +16,11 @@ _EXISTING_USER = User(
 def _service(mocker, existing_user=_EXISTING_USER, password_matches=True):
     mock_repo = mocker.Mock()
     mock_hasher = mocker.Mock()
-    mock_repo.get_by_email.return_value = existing_user
-    mock_hasher.verify_password.return_value = password_matches
+    mock_repo.get_user_by_email.return_value = existing_user
+    if not password_matches:
+        mock_hasher.verify_password.side_effect = InvalidPasswordError(
+            "Invalid password."
+        )
     return UserService(user_repository=mock_repo, password_hasher=mock_hasher), (
         mock_repo,
         mock_hasher,

@@ -10,7 +10,7 @@ def service(mocker):
     """A UserService backed by mocks, with no existing users."""
     mock_repo = mocker.Mock()
     mock_hasher = mocker.Mock()
-    mock_repo.get_by_email.return_value = None
+    mock_repo.get_user_by_email.return_value = None
     mock_hasher.hash_password.return_value = "hashed_password"
     return UserService(user_repository=mock_repo, password_hasher=mock_hasher)
 
@@ -34,7 +34,7 @@ def test_register_rejects_malformed_email(service, email):
 
 def test_register_accepts_well_formed_email(service):
     """A normal, well-formed email passes validation and registration succeeds."""
-    user = service.register_user("Patrick", "patrick@gmail.com", "SecurePass1")
+    user = service.register_user("Patrick", "patrick@gmail.com", "SecurePass1!")
     assert user.email == "patrick@gmail.com"
 
 

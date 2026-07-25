@@ -15,7 +15,7 @@ def test_register_prints_success_message(monkeypatch, capsys):
     service = _service()
     inputs = iter(["Patrick", "patrick@gmail.com"])
     monkeypatch.setattr(main, "input", lambda _prompt: next(inputs), raising=False)
-    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1")
+    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1!")
 
     main._register(service)
 
@@ -28,7 +28,7 @@ def test_register_prints_failure_message_on_invalid_input(monkeypatch, capsys):
     service = _service()
     inputs = iter(["Patrick", "not-an-email"])
     monkeypatch.setattr(main, "input", lambda _prompt: next(inputs), raising=False)
-    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1")
+    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1!")
 
     main._register(service)
 
@@ -39,11 +39,11 @@ def test_register_prints_failure_message_on_invalid_input(monkeypatch, capsys):
 def test_login_prints_success_message(monkeypatch, capsys):
     """Verifying correct credentials for a registered user prints success."""
     service = _service()
-    service.register_user("Patrick", "patrick@gmail.com", "SecurePass1")
+    service.register_user("Patrick", "patrick@gmail.com", "SecurePass1!")
     monkeypatch.setattr(
         main, "input", lambda _prompt: "patrick@gmail.com", raising=False
     )
-    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1")
+    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1!")
 
     main._login(service)
 
@@ -57,7 +57,7 @@ def test_login_prints_failure_message_for_unknown_user(monkeypatch, capsys):
     monkeypatch.setattr(
         main, "input", lambda _prompt: "unknown@gmail.com", raising=False
     )
-    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1")
+    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1!")
 
     main._login(service)
 
@@ -70,7 +70,7 @@ def test_main_menu_registers_then_logs_in_then_exits(monkeypatch, capsys):
     # Order: menu->register, username, email, menu->login, email, menu->exit
     inputs = iter(["1", "Patrick", "patrick@gmail.com", "2", "patrick@gmail.com", "3"])
     monkeypatch.setattr(main, "input", lambda _prompt: next(inputs), raising=False)
-    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1")
+    monkeypatch.setattr(main, "getpass", lambda _prompt: "SecurePass1!")
 
     main.main()
 

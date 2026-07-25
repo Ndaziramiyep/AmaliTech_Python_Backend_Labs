@@ -2,26 +2,16 @@
 
 
 class UserAlreadyExistsError(Exception):
-    """Raised when registering a user with an email that is already taken.
-
-    Example:
-        >>> raise UserAlreadyExistsError(
-        ...     "User with email 'patrick@gmail.com' already exists."
-        ... )
-    """
+    """Raised when a user with the given email already exists."""
 
 
 class UserNotFoundError(Exception):
-    """Raised when a user with a given email is not found during login.
+    """Raised when no user matches the given email."""
 
-    Example:
-        >>> raise UserNotFoundError("No user found with email 'patrick@gmail.com'.")
-    """
+
+class WeakPasswordError(Exception):
+    """Raised at registration when a password fails the strength policy."""
 
 
 class InvalidPasswordError(Exception):
-    """Raised when a password fails the registration policy or verification.
-
-    Example:
-        >>> raise InvalidPasswordError("Password must be at least 8 characters.")
-    """
+    """Raised at login when a password does not match the stored hash."""
