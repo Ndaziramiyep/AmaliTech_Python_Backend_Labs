@@ -1,5 +1,6 @@
 import pytest
 
+from src.exceptions import CityNotFoundError, InvalidAPIKeyError
 from src.models.weather import WeatherForecast
 from src.provider.mock import MockWeatherProvider
 
@@ -11,11 +12,12 @@ def provider() -> MockWeatherProvider:
 
 
 def test_valid_api_key(provider: MockWeatherProvider) -> None:
-    assert provider.is_valid_api_key() is True
+    provider.check_api_key()  # should not raise
 
 
 def test_invalid_api_key() -> None:
-    assert MockWeatherProvider(api_key="bad").is_valid_api_key() is False
+    with pytest.raises(InvalidAPIKeyError):
+        MockWeatherProvider(api_key="bad").check_api_key()
 
 
 @pytest.mark.parametrize("city", ["Kigali", "Nairobi", "Addis Ababa", "Dar es Salaam"])
@@ -25,5 +27,6 @@ def test_get_forecast_known_city(provider: MockWeatherProvider, city: str) -> No
     assert result.temperature > 0
 
 
-def test_get_forecast_unknown_city_returns_none(provider: MockWeatherProvider) -> None:
-    assert provider.get_forecast("Atlantis") is None
+def test_get_forecast_unknown_city_raises(provider: MockWeatherProvider) -> None:
+    with pytest.raises(CityNotFoundError):
+        provider.get_forecast("Atlantis")
