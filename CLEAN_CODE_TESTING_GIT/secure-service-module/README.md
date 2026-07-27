@@ -64,10 +64,9 @@ secure-service-module/
 │   ├── __init__.py
 │   ├── test_models.py
 │   ├── test_interfaces.py
-│   ├── test_registration.py
-│   ├── test_login.py
-│   ├── test_validation.py
-│   ├── test_implementations.py
+│   ├── test_service.py
+│   ├── test_memory_repo.py
+│   ├── test_bcrypt_hasher.py
 │   ├── test_end_to_end.py
 │   └── test_main.py
 ├── main.py                         # CLI entry point: `python main.py`
@@ -98,8 +97,8 @@ Concrete implementations are injected at construction time:
 
 This dependency injection pattern means `UserService` can be tested in
 complete isolation using mocks — no real database or hashing needed in unit
-tests (see `tests/test_registration.py` and `tests/test_login.py`, which
-mock both dependencies with `pytest-mock`).
+tests (see `tests/test_service.py`, which mocks both dependencies with
+`pytest-mock`).
 
 ```text
 UserService
@@ -273,14 +272,13 @@ pytest
 ================================ test session starts =================================
 collected 46 items
 
-tests/test_end_to_end.py .                                                     [  2%]
-tests/test_implementations.py .....                                           [ 13%]
-tests/test_interfaces.py ....                                                 [ 21%]
-tests/test_login.py ......                                                    [ 34%]
-tests/test_main.py ......                                                     [ 47%]
-tests/test_models.py ..                                                       [ 52%]
-tests/test_registration.py .........                                         [ 71%]
-tests/test_validation.py .............                                       [100%]
+tests/test_bcrypt_hasher.py ...                                               [  6%]
+tests/test_end_to_end.py .                                                     [  8%]
+tests/test_interfaces.py ....                                                 [ 17%]
+tests/test_main.py ......                                                     [ 30%]
+tests/test_memory_repo.py ..                                                  [ 34%]
+tests/test_models.py ..                                                       [ 39%]
+tests/test_service.py ............................                           [100%]
 
 =================================== tests coverage ====================================
 Name                                       Stmts   Miss  Cover   Missing
@@ -298,7 +296,7 @@ TOTAL                                         91      0   100%
 =========================== 46 passed in X.XXs ============================
 ```
 
-Run a specific file: `pytest tests/test_registration.py -v`
+Run a specific file: `pytest tests/test_service.py -v`
 
 ---
 

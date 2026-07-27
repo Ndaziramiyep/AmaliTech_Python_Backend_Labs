@@ -32,14 +32,14 @@ def _validate_email(email: str) -> None:
 
 def _validate_password_strength(password: str) -> None:
     """Raise WeakPasswordError unless password meets the strength policy."""
-    is_strong = (
+    is_password_strong = (
         len(password) >= _MIN_PASSWORD_LENGTH
         and any(char.isupper() for char in password)
         and any(char.islower() for char in password)
         and any(char.isdigit() for char in password)
         and any(not char.isalnum() for char in password)
     )
-    if not is_strong:
+    if not is_password_strong:
         raise WeakPasswordError(
             f"Password must be at least {_MIN_PASSWORD_LENGTH} characters and "
             "include an uppercase letter, a lowercase letter, a digit, and a "
