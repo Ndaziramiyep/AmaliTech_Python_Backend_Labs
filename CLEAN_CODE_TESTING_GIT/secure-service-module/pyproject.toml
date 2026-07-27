@@ -18,10 +18,10 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=src/auth --cov-report=term-missing"
+addopts = "--cov=src.auth --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["src/auth"]
+source = ["src.auth"]
 
 [dependency-groups]
 dev = [

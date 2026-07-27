@@ -44,13 +44,11 @@ def test_all_supported_cities(weather_service: WeatherService, city: str) -> Non
 
 
 def test_get_forecast_delegates_to_provider(mocker: MockerFixture) -> None:
-    """Verify WeatherService talks to WeatherProvider through its interface only.
-
-    Using a mocked provider (rather than MockWeatherProvider) isolates the
-    service's orchestration logic from any concrete data source.
-    """
+    """WeatherService should only talk to WeatherProvider's interface."""
+    # spec=WeatherProvider keeps the mock honest: calling a method that
+    # doesn't exist on the real interface would fail immediately.
     provider = mocker.Mock(spec=WeatherProvider)
-    provider.is_valid_api_key.return_value = True
+    provider.check_api_key.return_value = None
     provider.get_forecast.return_value = WeatherForecast(
         temperature=30, description="Hot"
     )
@@ -58,14 +56,14 @@ def test_get_forecast_delegates_to_provider(mocker: MockerFixture) -> None:
     service = WeatherService(provider)
     result = service.get_forecast("Kigali")
 
-    provider.is_valid_api_key.assert_called_once()
+    provider.check_api_key.assert_called_once()
     provider.get_forecast.assert_called_once_with("Kigali")
     assert result == WeatherForecast(temperature=30, description="Hot")
 
 
 def test_get_forecast_short_circuits_on_invalid_key(mocker: MockerFixture) -> None:
     provider = mocker.Mock(spec=WeatherProvider)
-    provider.is_valid_api_key.return_value = False
+    provider.check_api_key.side_effect = InvalidAPIKeyError("bad key")
 
     service = WeatherService(provider)
     with pytest.raises(InvalidAPIKeyError):
@@ -74,10 +72,10 @@ def test_get_forecast_short_circuits_on_invalid_key(mocker: MockerFixture) -> No
     provider.get_forecast.assert_not_called()
 
 
-def test_get_forecast_raises_when_provider_returns_none(mocker: MockerFixture) -> None:
+def test_get_forecast_reraises_city_not_found(mocker: MockerFixture) -> None:
     provider = mocker.Mock(spec=WeatherProvider)
-    provider.is_valid_api_key.return_value = True
-    provider.get_forecast.return_value = None
+    provider.check_api_key.return_value = None
+    provider.get_forecast.side_effect = CityNotFoundError("City not found: Atlantis")
 
     service = WeatherService(provider)
     with pytest.raises(CityNotFoundError):

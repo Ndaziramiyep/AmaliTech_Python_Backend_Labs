@@ -12,6 +12,7 @@ def main() -> None:
     provider = MockWeatherProvider(api_key=API_KEY)
     service = WeatherService(provider)
 
+    # Keep prompting until the user asks to quit.
     while True:
         city = input("\nEnter city name (or 'exit' to quit): ").strip()
         if city.lower() == "exit":
@@ -29,6 +30,7 @@ def main() -> None:
         except InvalidAPIKeyError:
             print("Error: Invalid API key.")
         except Exception as e:
+            # Last resort so one bad request can't crash the whole CLI loop.
             print(f"Unexpected error: {e}")
 
 

@@ -9,42 +9,24 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message
 
 
 class WeatherService:
-    """Service that provides weather forecasts using a provider.
-
-    Depends on the abstract WeatherProvider interface, enabling easy
-    substitution of the underlying data source (mock or real API).
-    """
+    """Fetches forecasts through a WeatherProvider (mock or real API)."""
 
     def __init__(self, provider: WeatherProvider) -> None:
-        """Initialise the service with a weather provider.
-
-        Args:
-            provider: Any concrete implementation of WeatherProvider.
-        """
         self.provider = provider
 
     def get_forecast(self, city: str) -> WeatherForecast:
-        """Return the weather forecast for a given city.
-
-        Args:
-            city: Name of the city to query.
-
-        Returns:
-            A WeatherForecast dataclass instance.
-
-        Raises:
-            InvalidAPIKeyError: If the provider's API key is invalid.
-            CityNotFoundError: If the city is not in the predefined data set.
-        """
+        """Return the forecast for city (raises InvalidAPIKeyError/CityNotFoundError)."""
         logger.info(f"Fetching weather forecast for {city}")
 
-        if not self.provider.is_valid_api_key():
+        # Check the key before touching the data source at all.
+        try:
+            self.provider.check_api_key()
+        except InvalidAPIKeyError:
             logger.error(f"Invalid API key for city: {city}")
-            raise InvalidAPIKeyError("API key is invalid")
+            raise
 
-        forecast = self.provider.get_forecast(city)
-        if forecast is None:
+        try:
+            return self.provider.get_forecast(city)
+        except CityNotFoundError:
             logger.error(f"Error fetching forecast for city: {city}")
-            raise CityNotFoundError(f"City not found: {city}")
-
-        return forecast
+            raise

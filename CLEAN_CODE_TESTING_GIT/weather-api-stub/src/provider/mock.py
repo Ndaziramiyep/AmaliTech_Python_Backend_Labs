@@ -1,15 +1,14 @@
-from typing import Dict, Optional
+from typing import Dict
 
+from src.exceptions import CityNotFoundError, InvalidAPIKeyError
 from src.models.weather import WeatherForecast
 from src.provider.base import WeatherProvider
 
 
 class MockWeatherProvider(WeatherProvider):
-    """Mock provider returning predefined weather data for known cities.
+    """Fake provider with predefined weather data, for tests/local dev."""
 
-    Intended for testing and local development. No real API calls are made.
-    """
-
+    # Fixed lookup table standing in for a real weather API's response data.
     _data: Dict[str, WeatherForecast] = {
         "Kigali": WeatherForecast(temperature=25, description="Sunny"),
         "Nairobi": WeatherForecast(temperature=22, description="Cloudy"),
@@ -18,28 +17,16 @@ class MockWeatherProvider(WeatherProvider):
     }
 
     def __init__(self, api_key: str = "valid_key") -> None:
-        """Initialise the mock provider.
-
-        Args:
-            api_key: The API key to validate against. Defaults to 'valid_key'.
-        """
         self.api_key = api_key
 
-    def is_valid_api_key(self) -> bool:
-        """Return True only when the key equals the accepted value.
+    def check_api_key(self) -> None:
+        """Raise InvalidAPIKeyError unless api_key is the accepted value."""
+        if self.api_key != "valid_key":
+            raise InvalidAPIKeyError("API key is invalid")
 
-        Returns:
-            True if api_key is 'valid_key', False otherwise.
-        """
-        return self.api_key == "valid_key"
-
-    def get_forecast(self, city: str) -> Optional[WeatherForecast]:
-        """Look up predefined forecast data for a city.
-
-        Args:
-            city: Name of the city to look up.
-
-        Returns:
-            A WeatherForecast instance, or None if the city is not in the data set.
-        """
-        return self._data.get(city)
+    def get_forecast(self, city: str) -> WeatherForecast:
+        """Look up city in the predefined data set, or raise CityNotFoundError."""
+        try:
+            return self._data[city]
+        except KeyError:
+            raise CityNotFoundError(f"City not found: {city}") from None

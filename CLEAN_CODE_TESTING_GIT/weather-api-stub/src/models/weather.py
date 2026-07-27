@@ -3,12 +3,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class WeatherForecast:
-    """Immutable weather forecast response model.
-
-    Attributes:
-        temperature: Current temperature in degrees Celsius.
-        description: Short human-readable weather description.
-    """
+    """Immutable forecast: temperature (°C) and a short description."""
 
     temperature: float
     description: str
