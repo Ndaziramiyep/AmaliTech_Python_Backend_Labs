@@ -7,19 +7,19 @@ from src.auth.models import User
 
 
 class UserRepository(ABC):
-    """Interface for user storage and retrieval (in-memory, SQL, etc.)."""
+    """Interface for user storage and retrieval (in-memory)."""
 
     @abstractmethod
     def get_user_by_email(self, email: str) -> Optional[User]:
-        """Return the user with this email, or None if not found."""
+        """Return the user with the given email, or None if not found."""
 
     @abstractmethod
     def add_user(self, user: User) -> None:
-        """Persist a new user."""
+        """Add a new user."""
 
 
 class PasswordHasher(ABC):
-    """Interface for password hashing and verification (bcrypt, argon2, etc.)."""
+    """Interface for password hashing and verification (bcrypt)."""
 
     @abstractmethod
     def hash_password(self, password: str) -> str:
