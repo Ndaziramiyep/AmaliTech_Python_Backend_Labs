@@ -42,6 +42,13 @@ def _build_distribution_bar(percentage: float) -> str:
     return "█" * filled + "░" * (_BAR_WIDTH - filled)
 
 
+def _format_mode_values(mode: list[float]) -> str:
+    """Format the mode(s) for display: none if no value repeats, else every tied value."""
+    if not mode:
+        return "No mode"
+    return ", ".join(str(value) for value in mode)
+
+
 def render_summary_section(report: AnalyticsReport) -> str:
     """Render the headline totals and overall statistics."""
     stats = report["overall_statistics"]
@@ -51,7 +58,7 @@ def render_summary_section(report: AnalyticsReport) -> str:
         f"  Total grade records : {report['total_grade_records']}",
         f"  Mean score          : {stats['mean']}",
         f"  Median score        : {stats['median']}",
-        f"  Mode                : {stats['mode']}",
+        f"  Mode                : {_format_mode_values(stats['mode'])}",
         f"  Highest score       : {stats['highest']}",
         f"  Lowest score        : {stats['lowest']}",
     ]
