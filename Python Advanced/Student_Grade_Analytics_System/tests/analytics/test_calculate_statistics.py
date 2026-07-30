@@ -32,9 +32,14 @@ def test_calculate_median_of_odd_length_list() -> None:
     assert calculate_median([70.0, 90.0, 80.0]) == 80.0
 
 
-def test_calculate_mode_returns_all_ties() -> None:
-    """When multiple values share the highest frequency, all are returned."""
-    assert sorted(calculate_mode([70.0, 70.0, 90.0, 90.0, 55.0])) == [70.0, 90.0]
+def test_calculate_mode_of_known_values() -> None:
+    """The mode is the single most-frequent value."""
+    assert calculate_mode([70.0, 70.0, 70.0, 90.0, 55.0]) == 70.0
+
+
+def test_calculate_mode_breaks_ties_to_smallest_value() -> None:
+    """When multiple values share the highest frequency, the smallest one wins."""
+    assert calculate_mode([70.0, 70.0, 90.0, 90.0, 55.0]) == 70.0
 
 
 def test_calculate_percentile_rank_of_median_value() -> None:

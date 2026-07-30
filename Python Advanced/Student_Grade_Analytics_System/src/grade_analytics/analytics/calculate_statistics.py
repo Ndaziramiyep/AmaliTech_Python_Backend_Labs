@@ -22,13 +22,13 @@ def calculate_median(values: list[float]) -> float:
     return statistics.median(values)
 
 
-def calculate_mode(values: list[float]) -> list[float]:
-    """Return every most-frequent value in ``values`` (multimodal-safe)."""
+def calculate_mode(values: list[float]) -> float:
+    """Return the most-frequent value in ``values``; ties break to the smallest value."""
     if not values:
         raise ValueError("Cannot calculate the mode of an empty list")
     counts = Counter(values)
     highest_count = max(counts.values())
-    return [value for value, count in counts.items() if count == highest_count]
+    return min(value for value, count in counts.items() if count == highest_count)
 
 
 def calculate_percentile_rank(value: float, values: list[float]) -> float:

@@ -53,7 +53,7 @@ class SummaryStatistics(TypedDict):
 
     mean: float
     median: float
-    mode: list[float]
+    mode: float
     highest: float
     lowest: float
 

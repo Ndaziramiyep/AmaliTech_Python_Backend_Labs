@@ -13,7 +13,6 @@ from grade_analytics.reporting.build_report import AnalyticsReport, RankingEntry
 
 _BANNER_WIDTH = 78
 _BAR_WIDTH = 24
-_MAX_DISPLAYED_MODE_VALUES = 5
 
 
 def _build_ascii_table(headers: list[str], rows: list[list[str]]) -> str:
@@ -43,13 +42,6 @@ def _build_distribution_bar(percentage: float) -> str:
     return "█" * filled + "░" * (_BAR_WIDTH - filled)
 
 
-def _format_mode_values(mode: list[float]) -> str:
-    """Format the (possibly long) list of modal scores for compact display."""
-    displayed = mode[:_MAX_DISPLAYED_MODE_VALUES]
-    suffix = ", ..." if len(mode) > _MAX_DISPLAYED_MODE_VALUES else ""
-    return ", ".join(str(value) for value in displayed) + suffix
-
-
 def render_summary_section(report: AnalyticsReport) -> str:
     """Render the headline totals and overall statistics."""
     stats = report["overall_statistics"]
@@ -59,7 +51,7 @@ def render_summary_section(report: AnalyticsReport) -> str:
         f"  Total grade records : {report['total_grade_records']}",
         f"  Mean score          : {stats['mean']}",
         f"  Median score        : {stats['median']}",
-        f"  Mode                : {_format_mode_values(stats['mode'])}",
+        f"  Mode                : {stats['mode']}",
         f"  Highest score       : {stats['highest']}",
         f"  Lowest score        : {stats['lowest']}",
     ]

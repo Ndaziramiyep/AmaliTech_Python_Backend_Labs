@@ -72,7 +72,7 @@ Windows consoles still default to:
 ```
 ==============================================================================
                         STUDENT GRADE ANALYTICS REPORT
-                 Generated: 2026-07-29T14:19:12.787576+00:00
+                 Generated: 2026-07-30T09:54:51.770762+00:00
 ==============================================================================
 
 SUMMARY
@@ -80,7 +80,7 @@ SUMMARY
   Total grade records : 32
   Mean score          : 81.27
   Median score        : 83.0
-  Mode                : 88.5, 91.0, 93.5, 95.0, 97.0, ...
+  Mode                : 55.0
   Highest score       : 99.0
   Lowest score        : 55.0
 
@@ -88,23 +88,23 @@ GRADE DISTRIBUTION
 +-------+-------+------------+--------------------------+
 | Grade | Count | Percentage | Distribution             |
 +-------+-------+------------+--------------------------+
-| A     | 11    | 34.38%     | ########................ |
-| B     | 8     | 25.00%     | ######.................. |
-| C     | 6     | 18.75%     | ####.................... |
-| D     | 4     | 12.50%     | ###..................... |
-| F     | 3     | 9.38%      | ##...................... |
+| A     | 11    | 34.38%     | ████████░░░░░░░░░░░░░░░░ |
+| B     | 8     | 25.00%     | ██████░░░░░░░░░░░░░░░░░░ |
+| C     | 6     | 18.75%     | ████░░░░░░░░░░░░░░░░░░░░ |
+| D     | 4     | 12.50%     | ███░░░░░░░░░░░░░░░░░░░░░ |
+| F     | 3     | 9.38%      | ██░░░░░░░░░░░░░░░░░░░░░░ |
 +-------+-------+------------+--------------------------+
 
 TOP PERFORMERS
-+------+---------------+------------------+---------------+
-| Rank | Name          | Major            | Average Score |
-+------+---------------+------------------+---------------+
-| 1    | Elena Petrova | Physics          | 97.0          |
-| 2    | Alice Johnson | Computer Science | 93.0          |
-| 3    | Grace Owusu   | Biology          | 91.25         |
-| 4    | Carla Mendes  | Mathematics      | 86.0          |
-| 5    | Henry Adeyemi | Biology          | 82.4          |
-+------+---------------+------------------+---------------+
++------+------------------+------------------+---------------+
+| Rank | Name             | Major            | Average Score |
++------+------------------+------------------+---------------+
+| 1    | Elena Ingabire   | Physics          | 97.0          |
+| 2    | Alice Uwase      | Computer Science | 93.0          |
+| 3    | Grace Umutoni    | Biology          | 91.25         |
+| 4    | Carla Mukamana   | Mathematics      | 86.0          |
+| 5    | Henry Nkurunziza | Biology          | 82.4          |
++------+------------------+------------------+---------------+
 
 MAJOR BREAKDOWN
 +------------------+---------------+---------------+
@@ -132,13 +132,13 @@ Report written to reports\grade_report.json
 
 ```json
 {
-  "generated_at": "2026-07-29T10:38:42.467476+00:00",
+  "generated_at": "2026-07-30T09:54:51.770762+00:00",
   "total_students": 8,
   "total_grade_records": 32,
   "overall_statistics": {
     "mean": 81.27,
     "median": 83.0,
-    "mode": [88.5, 91.0, "..."],
+    "mode": 55.0,
     "highest": 99.0,
     "lowest": 55.0
   },
@@ -147,7 +147,7 @@ Report written to reports\grade_report.json
     { "letter_grade": "B", "count": 8, "percentage": 25.0 }
   ],
   "top_performers": [
-    { "rank": 1, "student_id": "S005", "name": "Elena Petrova", "major": "Physics", "average_score": 97.0 }
+    { "rank": 1, "student_id": "S005", "name": "Elena Ingabire", "major": "Physics", "average_score": 97.0 }
   ],
   "major_breakdown": [
     { "major": "Computer Science", "student_count": 2, "average_score": 84.1 }
