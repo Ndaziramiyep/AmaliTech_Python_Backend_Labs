@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grade-analytics"
+version = "1.0.0"
+description = "Student Grade Analytics Tool with Advanced Collections"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "N", "C90"]
+
+[tool.mypy]
+# Set above the project's 3.11 floor solely so mypy can parse numpy's stubs
+# (pulled in transitively via matplotlib), which use PEP 695 `type` aliases
+# gated behind 3.12. Project code itself still targets 3.11 (see [project]).
+python_version = "3.12"
+mypy_path = "src"
+explicit_package_bases = true
+strict = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
