@@ -1,0 +1,12 @@
+student_id,name,major,year,course_name,grade
+S001,Alice Johnson,Computer Science,2,Data Structures,95
+S001,Alice Johnson,Computer Science,2,Algorithms,88
+S001,Alice Johnson,Computer Science,2,Database Systems,92
+S002,Bob Smith,Mathematics,1,Calculus,78
+S002,Bob Smith,Mathematics,1,Linear Algebra,82
+S003,Charlie Brown,Physics,3,Quantum Mechanics,91
+S003,Charlie Brown,Physics,3,Electromagnetism,85
+S004,David Wilson,Computer Science,2,Data Structures,70
+S004,David Wilson,Computer Science,2,Machine Learning,75
+S005,Eva Davis,Biology,1,Genetics,96
+S005,Eva Davis,Biology,1,Cell Biology,94
