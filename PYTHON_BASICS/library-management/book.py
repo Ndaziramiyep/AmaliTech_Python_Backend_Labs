@@ -81,8 +81,18 @@ class Book(LibraryResource):
     def title(self, value):
         if not value or not value.strip():
             raise ValueError("Title cannot be empty")
-        if not value.replace(" ", "").replace("-", "").replace("'", "").replace(":", "").replace(",", "").replace(".", "").isalnum():
-            raise ValueError("Title must contain only letters, numbers, spaces, or common punctuation")
+        if (
+            not value.replace(" ", "")
+            .replace("-", "")
+            .replace("'", "")
+            .replace(":", "")
+            .replace(",", "")
+            .replace(".", "")
+            .isalnum()
+        ):
+            raise ValueError(
+                "Title must contain only letters, numbers, spaces, or common punctuation"
+            )
         self._title = value.strip()
 
     @property
@@ -128,6 +138,7 @@ class Book(LibraryResource):
     @author.setter
     def author(self, value):
         from author import Author
+
         if not isinstance(value, Author):
             raise ValueError("author must be an Author object")
         self._author = value
@@ -147,7 +158,9 @@ class Book(LibraryResource):
         except (ValueError, TypeError):
             raise ValueError("Publication year must be a number")
         if value < 1 or value > date.today().year:
-            raise ValueError(f"Publication year must be between 1 and {date.today().year}")
+            raise ValueError(
+                f"Publication year must be between 1 and {date.today().year}"
+            )
         self._year = value
 
     @property

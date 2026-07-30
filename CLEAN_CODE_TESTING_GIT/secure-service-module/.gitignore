@@ -12,6 +12,17 @@ venv/
 # Test coverage
 htmlcov/
 .coverage
+coverage.xml
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
 
 # IDE
 .vscode/

@@ -7,8 +7,8 @@ from utils import format_currency, divider
 # Rwanda RRA monthly PAYE brackets: (lower_bound, upper_bound, rate)
 # Tax is applied directly to monthly gross — no annualisation required.
 _TAX_BRACKETS: list[tuple[float, float, float]] = [
-    (0,       30_000,       0.00),
-    (30_000,  100_000,      0.20),
+    (0, 30_000, 0.00),
+    (30_000, 100_000, 0.20),
     (100_000, float("inf"), 0.30),
 ]
 
@@ -29,21 +29,21 @@ def apply_tax(monthly_gross: float) -> float:
 def compute_payroll_details(employee: Employee) -> dict:
     """Return a dict of gross, tax, and net monthly figures for the given employee."""
     gross = employee.calculate_salary()
-    tax   = apply_tax(gross)
-    net   = gross - tax
+    tax = apply_tax(gross)
+    net = gross - tax
     return {
         "emp_id": employee.emp_id,
-        "name":   employee.name,
-        "role":   employee.role(),
-        "gross":  gross,
-        "tax":    tax,
-        "net":    net,
+        "name": employee.name,
+        "role": employee.role(),
+        "gross": gross,
+        "tax": tax,
+        "net": net,
     }
 
 
 def generate_payslip(employee: Employee) -> str:
     """Build and return a formatted multi-line payslip string for the given employee."""
-    data  = compute_payroll_details(employee)
+    data = compute_payroll_details(employee)
     lines = [
         divider(),
         "  PAYSLIP",

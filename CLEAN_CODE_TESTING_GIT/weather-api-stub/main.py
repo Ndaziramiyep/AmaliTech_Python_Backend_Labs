@@ -1,15 +1,18 @@
-
 from src.exceptions import CityNotFoundError, InvalidAPIKeyError
 from src.provider.mock import MockWeatherProvider
 from src.service import WeatherService
 
+# Embedded API key: the mock provider only ever validates against this
+# constant, so there's nothing secret for a user to supply at the prompt.
+API_KEY = "valid_key"
 
-def main():
+
+def main() -> None:
     print("=== Weather API Stub CLI ===")
-    api_key = input("Enter API key (default='valid_key'): ").strip() or "valid_key"
-    provider = MockWeatherProvider(api_key=api_key)
+    provider = MockWeatherProvider(api_key=API_KEY)
     service = WeatherService(provider)
 
+    # Keep prompting until the user asks to quit.
     while True:
         city = input("\nEnter city name (or 'exit' to quit): ").strip()
         if city.lower() == "exit":
@@ -19,13 +22,17 @@ def main():
         try:
             print(f"INFO: Forecast request received for city={city}")
             forecast = service.get_forecast(city)
-            print(f"Forecast for {city}: {forecast.temperature}°C, {forecast.description}")
+            print(
+                f"Forecast for {city}: {forecast.temperature}°C, {forecast.description}"
+            )
         except CityNotFoundError:
             print(f"Error: City '{city}' not found in predefined data.")
         except InvalidAPIKeyError:
             print("Error: Invalid API key.")
         except Exception as e:
+            # Last resort so one bad request can't crash the whole CLI loop.
             print(f"Unexpected error: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,16 +1,17 @@
-class UserAlreadyExistsError(Exception):
-    """Raised when attempting to register a user with an email that already exists."""
+"""Custom exceptions for the auth module."""
 
-    pass
+
+class UserAlreadyExistsError(Exception):
+    """Raised when a user with the given email already exists."""
 
 
 class UserNotFoundError(Exception):
-    """Raised when a user with a given email is not found during login."""
+    """Raised when no user matches the given email."""
 
-    pass
+
+class WeakPasswordError(Exception):
+    """Raised at registration when a password fails the strength policy."""
 
 
 class InvalidPasswordError(Exception):
-    """Raised when a password does not meet policy or verification fails."""
-
-    pass
+    """Raised at login when a password does not match the stored hash."""

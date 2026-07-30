@@ -5,6 +5,7 @@ from borrower import Borrow, load_data, save_data
 
 # ── copy helpers ──────────────────────────────────────────────────────────────
 
+
 def get_available_copies(book: Book, borrows: list[Borrow]) -> int:
     """Return total copies minus the number of active (unreturned) borrows."""
     return book.copies - get_borrowed_count(book, borrows)
@@ -17,6 +18,7 @@ def get_borrowed_count(book: Book, borrows: list[Borrow]) -> int:
 
 # ── search & filter ───────────────────────────────────────────────────────────
 
+
 def search_books(books: list[Book], query: str, field: str) -> list[Book]:
     """Search books by a given field (title, author, isbn, category, year)."""
     query = query.lower()
@@ -28,14 +30,20 @@ def search_books(books: list[Book], query: str, field: str) -> list[Book]:
             results.append(book)
         elif field == "isbn" and query in book.isbn.lower():
             results.append(book)
-        elif field == "category" and book.category and query in book.category.value.lower():
+        elif (
+            field == "category"
+            and book.category
+            and query in book.category.value.lower()
+        ):
             results.append(book)
         elif field == "year" and book.year and query in str(book.year):
             results.append(book)
     return results
 
 
-def filter_books(books: list[Book], borrows: list[Borrow], criteria: str, value=None) -> list[Book]:
+def filter_books(
+    books: list[Book], borrows: list[Borrow], criteria: str, value=None
+) -> list[Book]:
     """
     Filter books by criteria:
     - available: books with copies available
@@ -52,14 +60,23 @@ def filter_books(books: list[Book], borrows: list[Borrow], criteria: str, value=
             filtered.append(book)
         elif criteria == "borrowed" and borrowed_count > 0:
             filtered.append(book)
-        elif criteria == "category" and isinstance(value, Categories) and book.category == value:
+        elif (
+            criteria == "category"
+            and isinstance(value, Categories)
+            and book.category == value
+        ):
             filtered.append(book)
-        elif criteria == "type" and isinstance(value, TypeOfBook) and book.book_type == value:
+        elif (
+            criteria == "type"
+            and isinstance(value, TypeOfBook)
+            and book.book_type == value
+        ):
             filtered.append(book)
     return filtered
 
 
 # ── menu actions ──────────────────────────────────────────────────────────────
+
 
 def add_book(books, authors, borrows):
     """Prompt user for book details, validate input, and add the book."""
@@ -136,7 +153,9 @@ def add_book(books, authors, borrows):
         print(t.value)
     book_type_input = input("Book type: ").strip().title()
     try:
-        book_type = TypeOfBook(book_type_input) if book_type_input else TypeOfBook.HARDCOVER
+        book_type = (
+            TypeOfBook(book_type_input) if book_type_input else TypeOfBook.HARDCOVER
+        )
     except ValueError:
         print(f"Invalid book type '{book_type_input}'. Using Hardcover.")
         book_type = TypeOfBook.HARDCOVER
@@ -161,18 +180,38 @@ def list_books(books, borrows):
     if not books:
         print("No books in the library.")
         return
-    headers = ["#", "Title", "Author", "ISBN", "Category", "Type", "Year", "Copies", "Avail", "Status"]
+    headers = [
+        "#",
+        "Title",
+        "Author",
+        "ISBN",
+        "Category",
+        "Type",
+        "Year",
+        "Copies",
+        "Avail",
+        "Status",
+    ]
     rows = []
     for i, b in enumerate(books, 1):
         available = get_available_copies(b, borrows)
-        rows.append([
-            i, b.title, b.author.name, b.isbn,
-            b.category.value if b.category else "",
-            b.book_type.value if b.book_type else "",
-            b.year or "", b.copies, available,
-            "Available" if available > 0 else "Not Available",
-        ])
-    widths = [max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
+        rows.append(
+            [
+                i,
+                b.title,
+                b.author.name,
+                b.isbn,
+                b.category.value if b.category else "",
+                b.book_type.value if b.book_type else "",
+                b.year or "",
+                b.copies,
+                available,
+                "Available" if available > 0 else "Not Available",
+            ]
+        )
+    widths = [
+        max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))
+    ]
     print(f"\nBooks in library ({len(books)} total):")
     print(_fmt_row(widths, headers))
     print("  ".join("-" * w for w in widths))
@@ -186,8 +225,13 @@ def list_authors(authors):
         print("No authors found.")
         return
     headers = ["#", "Name", "Nationality", "Birth Year"]
-    rows = [[i, a.name, a.nationality or "", a.birth_year or ""] for i, a in enumerate(authors, 1)]
-    widths = [max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
+    rows = [
+        [i, a.name, a.nationality or "", a.birth_year or ""]
+        for i, a in enumerate(authors, 1)
+    ]
+    widths = [
+        max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))
+    ]
     print(f"\nAuthors ({len(authors)} total):")
     print(_fmt_row(widths, headers))
     print("  ".join("-" * w for w in widths))
@@ -239,8 +283,13 @@ def return_book(books, borrows, authors):
         return
 
     borrow_record = next(
-        (b for b in borrows if b.borrower_name == borrower
-         and b.book_title == book_to_return.title and b.return_date is None),
+        (
+            b
+            for b in borrows
+            if b.borrower_name == borrower
+            and b.book_title == book_to_return.title
+            and b.return_date is None
+        ),
         None,
     )
 
@@ -252,7 +301,6 @@ def return_book(books, borrows, authors):
         print("No active borrow record found for this book and borrower.")
 
 
-
 def list_borrows(borrows):
     """Display only active (unreturned) borrow records in a column-aligned table."""
     active = [b for b in borrows if not b.return_date]
@@ -261,11 +309,19 @@ def list_borrows(borrows):
         return
     headers = ["#", "Borrower", "Book Title", "Borrowed On", "Due Date", "Status"]
     rows = [
-        [i, b.borrower_name, b.book_title, b.borrow_date, b.due_date,
-         "Overdue" if b.is_overdue() else "Borrowed"]
+        [
+            i,
+            b.borrower_name,
+            b.book_title,
+            b.borrow_date,
+            b.due_date,
+            "Overdue" if b.is_overdue() else "Borrowed",
+        ]
         for i, b in enumerate(active, 1)
     ]
-    widths = [max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
+    widths = [
+        max(len(str(r[i])) for r in [headers] + rows) for i in range(len(headers))
+    ]
     print(f"\nActive Borrow records ({len(active)} total):")
     print(_fmt_row(widths, headers))
     print("  ".join("-" * w for w in widths))
@@ -363,6 +419,7 @@ def delete_book(books, borrows, authors):
 
 
 # ── CLI loop ──────────────────────────────────────────────────────────────────
+
 
 def cli():
     """Main CLI loop: load data, display menu, and dispatch user actions."""

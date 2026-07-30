@@ -9,14 +9,15 @@ from utils import format_currency, divider, format_header
 # To add a new employee type, insert one entry here — nothing else changes.
 _ROLE_MAP: dict[str, tuple[str, callable]] = {
     "1": ("Full-Time Employee", None),
-    "2": ("Contract Employee",  None),
-    "3": ("Intern",             None),
+    "2": ("Contract Employee", None),
+    "3": ("Intern", None),
 }
 
 
 # ----------------------------------------------------------------------
 # Input helpers
 # ----------------------------------------------------------------------
+
 
 def prompt_emp_id(existing_ids: set[str]) -> str:
     """Prompt until a valid, unique alphanumeric employee ID is entered."""
@@ -45,7 +46,9 @@ def prompt_name() -> str:
         elif len(raw) > 50:
             print("  ! Name must be 50 characters or fewer.")
         elif not all(ch.isalpha() or ch in " -'" for ch in raw):
-            print("  ! Name must contain only letters, spaces, hyphens, or apostrophes.")
+            print(
+                "  ! Name must contain only letters, spaces, hyphens, or apostrophes."
+            )
         else:
             return raw.title()
 
@@ -67,13 +70,14 @@ def prompt_float(label: str, min_val: float = 0.0) -> float:
 # Employee factory functions
 # ----------------------------------------------------------------------
 
+
 def _add_full_time(existing_ids: set[str]) -> FullTimeEmployee:
     """Collect validated input and return a new FullTimeEmployee."""
     print("\n  -- Full-Time Employee --")
     emp_id = prompt_emp_id(existing_ids)
-    name   = prompt_name()
+    name = prompt_name()
     salary = prompt_float("Base Salary (e.g. 350000)          ", min_val=0.01)
-    bonus  = prompt_float("Monthly Bonus (e.g. 50000, 0 if none)", min_val=0.0)
+    bonus = prompt_float("Monthly Bonus (e.g. 50000, 0 if none)", min_val=0.0)
     return FullTimeEmployee(emp_id, name, salary, bonus)
 
 
@@ -81,35 +85,36 @@ def _add_contract(existing_ids: set[str]) -> ContractEmployee:
     """Collect validated input and return a new ContractEmployee."""
     print("\n  -- Contract Employee --")
     emp_id = prompt_emp_id(existing_ids)
-    name   = prompt_name()
-    rate   = prompt_float("Hourly Rate (e.g. 3000)            ", min_val=0.01)
-    hours  = prompt_float("Hours Worked (e.g. 160)             ", min_val=0.0)
+    name = prompt_name()
+    rate = prompt_float("Hourly Rate (e.g. 3000)            ", min_val=0.01)
+    hours = prompt_float("Hours Worked (e.g. 160)             ", min_val=0.0)
     return ContractEmployee(emp_id, name, rate, hours)
 
 
 def _add_intern(existing_ids: set[str]) -> Intern:
     """Collect validated input and return a new Intern."""
     print("\n  -- Intern --")
-    emp_id  = prompt_emp_id(existing_ids)
-    name    = prompt_name()
+    emp_id = prompt_emp_id(existing_ids)
+    name = prompt_name()
     stipend = prompt_float("Monthly Stipend (e.g. 80000)           ", min_val=0.01)
     return Intern(emp_id, name, stipend)
 
 
 # Assign factories after definition to avoid forward-reference issues
 _ROLE_MAP["1"] = ("Full-Time Employee", _add_full_time)
-_ROLE_MAP["2"] = ("Contract Employee",  _add_contract)
-_ROLE_MAP["3"] = ("Intern",             _add_intern)
+_ROLE_MAP["2"] = ("Contract Employee", _add_contract)
+_ROLE_MAP["3"] = ("Intern", _add_intern)
 
 
 # ----------------------------------------------------------------------
 # Collection loop
 # ----------------------------------------------------------------------
 
+
 def collect_employees() -> list[Employee]:
     """Run the interactive menu loop and return the collected list of employees."""
-    employees:    list[Employee] = []
-    existing_ids: set[str]       = set()
+    employees: list[Employee] = []
+    existing_ids: set[str] = set()
     print(format_header("EMPLOYEE PAYROLL TRACKER"))
 
     while True:
@@ -144,6 +149,7 @@ def collect_employees() -> list[Employee]:
 # Output functions
 # ----------------------------------------------------------------------
 
+
 def print_all_payslips(employees: list[Employee]) -> None:
     """Print a formatted payslip for every employee in the list."""
     print("\n" + format_header("PAYSLIPS"))
@@ -167,8 +173,8 @@ def print_summary(payroll_data: list[dict]) -> None:
             f"{record['role']:<22} {format_currency(record['net']):>10}"
         )
         total_gross += record["gross"]
-        total_tax   += record["tax"]
-        total_net   += record["net"]
+        total_tax += record["tax"]
+        total_net += record["net"]
 
     print(divider(col_width, "-"))
     print(f"  {'TOTALS':<49} {format_currency(total_net):>10}")
@@ -182,9 +188,10 @@ def print_summary(payroll_data: list[dict]) -> None:
 # Entry point
 # ----------------------------------------------------------------------
 
+
 def main() -> None:
     """Orchestrate the full payroll workflow: collect → payslips → process → summary."""
-    employees    = collect_employees()
+    employees = collect_employees()
     print_all_payslips(employees)
     payroll_data = process_payroll(employees)
     print_summary(payroll_data)

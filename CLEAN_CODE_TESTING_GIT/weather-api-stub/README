@@ -57,14 +57,11 @@ weather-api-stub/
 ## Example Usage
 
 ```bash
-$ python -m src.main
-Enter city name: Kigali
-Enter API key: valid_api_key_123
+$ python main.py
+=== Weather API Stub CLI ===
 
-Weather in Kigali:
-  Temperature: 22°C
-  Condition: Partly Cloudy
-  Humidity: 65%
+Enter city name (or 'exit' to quit): Kigali
+Forecast for Kigali: 25°C, Sunny
 ```
 
 ## Documentation
