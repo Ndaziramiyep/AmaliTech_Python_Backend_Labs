@@ -2,7 +2,9 @@
 
 Tables use plain ASCII (``+``, ``-``, ``|``) rather than Unicode box-drawing
 characters, since the legacy code page many Windows consoles still default
-to cannot display the latter reliably.
+to cannot display the latter reliably. The distribution bar uses the
+Unicode block characters ``█``/``░``, which render correctly on UTF-8
+terminals (Windows Terminal, VS Code's integrated terminal).
 """
 
 from __future__ import annotations
@@ -36,9 +38,9 @@ def _build_ascii_table(headers: list[str], rows: list[list[str]]) -> str:
 
 
 def _build_distribution_bar(percentage: float) -> str:
-    """Render ``percentage`` (0-100) as a fixed-width ASCII bar."""
+    """Render ``percentage`` (0-100) as a fixed-width Unicode block bar."""
     filled = round(percentage / 100 * _BAR_WIDTH)
-    return "#" * filled + "." * (_BAR_WIDTH - filled)
+    return "█" * filled + "░" * (_BAR_WIDTH - filled)
 
 
 def _format_mode_values(mode: list[float]) -> str:

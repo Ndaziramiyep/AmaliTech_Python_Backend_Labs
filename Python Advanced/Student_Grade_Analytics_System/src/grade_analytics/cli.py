@@ -54,6 +54,10 @@ def run_analytics_pipeline(input_path: Path, output_path: Path, top_n: int) -> A
 
 def main(argv: list[str] | None = None) -> None:
     """Run the CLI: parse arguments, build the report, and print it."""
+    if sys.stdout.encoding and sys.stdout.encoding.lower() not in {"utf-8", "utf8"}:
+        # The report's distribution bars use Unicode block characters, which
+        # Windows' legacy console code pages (e.g. cp1252) can't encode.
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = parse_command_line_arguments(argv)
     try:
         report = run_analytics_pipeline(args.input, args.output, args.top_n)

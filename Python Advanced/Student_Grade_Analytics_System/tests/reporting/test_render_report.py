@@ -45,7 +45,7 @@ def test_render_grade_distribution_table_has_a_row_per_grade(
 def test_render_grade_distribution_table_bar_scales_with_percentage(
     sample_students: list[Student], sample_grade_records: list[GradeRecord]
 ) -> None:
-    """A 100% grade share renders a fully-filled 24-character ASCII bar."""
+    """A 100% grade share renders a fully-filled 24-character block bar."""
     report = build_analytics_report(sample_students, sample_grade_records)
     report["grade_distribution"] = [
         {"letter_grade": "A", "count": 5, "percentage": 100.0},
@@ -53,7 +53,7 @@ def test_render_grade_distribution_table_bar_scales_with_percentage(
 
     table = render_grade_distribution_table(report)
 
-    assert "#" * 24 in table
+    assert "█" * 24 in table
 
 
 def test_render_ranking_table_lists_every_entry(
