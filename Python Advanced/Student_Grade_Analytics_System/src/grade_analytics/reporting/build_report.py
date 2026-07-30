@@ -83,17 +83,17 @@ def _convert_ranked_student_to_entry(ranked_student: RankedStudent) -> RankingEn
 
 def build_grade_distribution_section(records: list[GradeRecord]) -> list[GradeDistributionEntry]:
     """Build the grade-distribution report section from ``records``."""
-    total = len(records)
-    if total == 0:
+    total_record_count = len(records)
+    if total_record_count == 0:
         return []
     ordered_distribution = order_grade_distribution(count_grade_distribution(records))
     return [
         GradeDistributionEntry(
-            letter_grade=letter,
+            letter_grade=letter_grade,
             count=count,
-            percentage=round((count / total) * 100.0, 2),
+            percentage=round((count / total_record_count) * 100.0, 2),
         )
-        for letter, count in ordered_distribution.items()
+        for letter_grade, count in ordered_distribution.items()
     ]
 
 
@@ -101,9 +101,9 @@ def build_major_breakdown_section(
     students: list[Student], scores_by_student: dict[str, list[float]]
 ) -> list[MajorBreakdownEntry]:
     """Build the per-major aggregate performance report section."""
-    grouped_by_major = group_students_by_major(students)
-    breakdown: list[MajorBreakdownEntry] = []
-    for major, major_students in grouped_by_major.items():
+    students_by_major = group_students_by_major(students)
+    breakdown_entries: list[MajorBreakdownEntry] = []
+    for major, major_students in students_by_major.items():
         major_scores = [
             score
             for student in major_students
@@ -111,14 +111,14 @@ def build_major_breakdown_section(
         ]
         if not major_scores:
             continue
-        breakdown.append(
+        breakdown_entries.append(
             MajorBreakdownEntry(
                 major=major,
                 student_count=len(major_students),
                 average_score=round(calculate_mean(major_scores), 2),
             )
         )
-    return breakdown
+    return breakdown_entries
 
 
 def build_analytics_report(
@@ -128,7 +128,9 @@ def build_analytics_report(
     scores_by_student = group_scores_by_student(records)
     all_scores = [record.score for record in records]
     ranked_students = rank_students_by_average(students, scores_by_student)
-    ranking_entries = [_convert_ranked_student_to_entry(entry) for entry in ranked_students]
+    ranking_entries = [
+        _convert_ranked_student_to_entry(ranked_student) for ranked_student in ranked_students
+    ]
 
     return AnalyticsReport(
         generated_at=datetime.now(UTC).isoformat(),

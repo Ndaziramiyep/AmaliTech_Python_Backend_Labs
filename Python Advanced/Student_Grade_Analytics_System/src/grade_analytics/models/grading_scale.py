@@ -13,7 +13,7 @@ _FAILING_GRADE = "F"
 
 def convert_score_to_letter_grade(score: float) -> str:
     """Convert a numeric ``score`` (0-100) to its letter grade."""
-    for threshold, letter in _SCALE:
+    for threshold, letter_grade in _SCALE:
         if score >= threshold:
-            return letter
+            return letter_grade
     return _FAILING_GRADE

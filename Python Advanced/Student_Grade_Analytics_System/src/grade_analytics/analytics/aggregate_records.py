@@ -23,37 +23,39 @@ def count_grade_distribution(records: list[GradeRecord]) -> Counter[str]:
 def order_grade_distribution(distribution: Counter[str]) -> OrderedDict[str, int]:
     """Return ``distribution`` as an ``OrderedDict`` in A-to-F display order."""
     return OrderedDict(
-        (letter, distribution[letter]) for letter in _GRADE_DISPLAY_ORDER if letter in distribution
+        (letter_grade, distribution[letter_grade])
+        for letter_grade in _GRADE_DISPLAY_ORDER
+        if letter_grade in distribution
     )
 
 
 def group_students_by_major(students: list[Student]) -> defaultdict[str, list[Student]]:
     """Group ``students`` into lists keyed by their major."""
-    grouped: defaultdict[str, list[Student]] = defaultdict(list)
+    students_by_major: defaultdict[str, list[Student]] = defaultdict(list)
     for student in students:
-        grouped[student.major].append(student)
-    return grouped
+        students_by_major[student.major].append(student)
+    return students_by_major
 
 
 def group_students_by_year(students: list[Student]) -> defaultdict[int, list[Student]]:
     """Group ``students`` into lists keyed by their enrollment year."""
-    grouped: defaultdict[int, list[Student]] = defaultdict(list)
+    students_by_year: defaultdict[int, list[Student]] = defaultdict(list)
     for student in students:
-        grouped[student.year].append(student)
-    return grouped
+        students_by_year[student.year].append(student)
+    return students_by_year
 
 
 def group_scores_by_student(records: list[GradeRecord]) -> defaultdict[str, list[float]]:
     """Group every score in ``records`` into a list keyed by student id."""
-    grouped: defaultdict[str, list[float]] = defaultdict(list)
+    scores_by_student: defaultdict[str, list[float]] = defaultdict(list)
     for record in records:
-        grouped[record.student_id].append(record.score)
-    return grouped
+        scores_by_student[record.student_id].append(record.score)
+    return scores_by_student
 
 
 def group_scores_by_semester(records: list[GradeRecord]) -> defaultdict[str, list[float]]:
     """Group every score in ``records`` into a list keyed by semester."""
-    grouped: defaultdict[str, list[float]] = defaultdict(list)
+    scores_by_semester: defaultdict[str, list[float]] = defaultdict(list)
     for record in records:
-        grouped[record.semester].append(record.score)
-    return grouped
+        scores_by_semester[record.semester].append(record.score)
+    return scores_by_semester

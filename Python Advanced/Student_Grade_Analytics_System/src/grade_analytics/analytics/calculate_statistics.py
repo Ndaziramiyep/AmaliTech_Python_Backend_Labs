@@ -8,47 +8,47 @@ from collections import Counter
 from grade_analytics.models.entities import RankedStudent, Student
 
 
-def calculate_mean(values: list[float]) -> float:
-    """Return the arithmetic mean of ``values``."""
-    if not values:
+def calculate_mean(scores: list[float]) -> float:
+    """Return the arithmetic mean of ``scores``."""
+    if not scores:
         raise ValueError("Cannot calculate the mean of an empty list")
-    return statistics.mean(values)
+    return statistics.mean(scores)
 
 
-def calculate_median(values: list[float]) -> float:
-    """Return the median of ``values``."""
-    if not values:
+def calculate_median(scores: list[float]) -> float:
+    """Return the median of ``scores``."""
+    if not scores:
         raise ValueError("Cannot calculate the median of an empty list")
-    return statistics.median(values)
+    return statistics.median(scores)
 
 
-def calculate_mode(values: list[float]) -> list[float]:
-    """Return every value tied for the highest frequency; empty if no value repeats."""
-    if not values:
+def calculate_mode(scores: list[float]) -> list[float]:
+    """Return every score tied for the highest frequency; empty if no score repeats."""
+    if not scores:
         raise ValueError("Cannot calculate the mode of an empty list")
-    counts = Counter(values)
-    highest_count = max(counts.values())
+    score_counts = Counter(scores)
+    highest_count = max(score_counts.values())
     if highest_count == 1:
         return []
-    return sorted(value for value, count in counts.items() if count == highest_count)
+    return sorted(score for score, count in score_counts.items() if count == highest_count)
 
 
-def calculate_percentile_rank(value: float, values: list[float]) -> float:
-    """Return the percentage of ``values`` that are less than or equal to ``value``."""
-    if not values:
+def calculate_percentile_rank(score: float, scores: list[float]) -> float:
+    """Return the percentage of ``scores`` that are less than or equal to ``score``."""
+    if not scores:
         raise ValueError("Cannot calculate a percentile rank against an empty list")
-    at_or_below = sum(1 for other in values if other <= value)
-    return (at_or_below / len(values)) * 100.0
+    scores_at_or_below = sum(1 for other_score in scores if other_score <= score)
+    return (scores_at_or_below / len(scores)) * 100.0
 
 
-def find_highest_score(values: list[float]) -> float | None:
-    """Return the highest score in ``values``, or ``None`` if empty."""
-    return max(values) if values else None
+def find_highest_score(scores: list[float]) -> float | None:
+    """Return the highest score in ``scores``, or ``None`` if empty."""
+    return max(scores) if scores else None
 
 
-def find_lowest_score(values: list[float]) -> float | None:
-    """Return the lowest score in ``values``, or ``None`` if empty."""
-    return min(values) if values else None
+def find_lowest_score(scores: list[float]) -> float | None:
+    """Return the lowest score in ``scores``, or ``None`` if empty."""
+    return min(scores) if scores else None
 
 
 def rank_students_by_average(
@@ -65,7 +65,7 @@ def rank_students_by_average(
         for student in students
         if scores_by_student.get(student.student_id)
     ]
-    averaged.sort(key=lambda pair: pair[1], reverse=True)
+    averaged.sort(key=lambda student_average_pair: student_average_pair[1], reverse=True)
 
     ranked: list[RankedStudent] = []
     previous_average: float | None = None
