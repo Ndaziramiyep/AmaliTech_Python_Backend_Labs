@@ -1,24 +1,77 @@
 # Social Media Platform Data Backend
 
-A data backend for a social media platform: a normalized PostgreSQL schema for users, posts,
-comments, and followers; a transactional follow/unfollow feature built on psycopg2 connection
-pooling; Redis-cached timelines; and MongoDB-backed activity logging. The main engineering focus
-is the timeline feed query — a CTE + JOIN + `ROW_NUMBER()` query backed by composite B-tree
-indexes and verified with `EXPLAIN ANALYZE`.
+> The behind-the-scenes engine for a social media app — the part users never see, but that
+> makes registering, posting, following, commenting, liking, and scrolling your feed all work
+> correctly and quickly.
+
+## What is this, in plain terms?
+
+Every social media app — think Twitter/X, Instagram, or a class project like this one — needs
+somewhere to durably store its data and rules for keeping that data correct and fast to read.
+This project **is** that storage-and-rules layer. It doesn't have a visual interface; instead,
+it's a command-line program that plays the role of the app's server, so it can be tested and
+demonstrated without needing a website or mobile app in front of it.
+
+It supports the core actions you'd expect from any social app:
+
+| Action | What happens behind the scenes |
+| --- | --- |
+| 📝 **Register / log in** | Your password is never stored in plain text — only a salted, scrambled ("hashed") version. |
+| 📣 **Create a post** | Saved permanently with your name attached and a timestamp. |
+| ➕ **Follow / unfollow someone** | Recorded as an all-or-nothing operation — it either fully succeeds or fully fails, never half-happens. |
+| 💬 **Comment on a post** | Linked back to both the post and the commenter. |
+| ❤️ **Like a post** | Logged as an activity event. |
+| 📰 **View your feed** | A fast, paginated list of posts from everyone you follow, newest first. |
+| 🔥 **View trending posts** | Posts ranked by how much recent discussion (comments) they're getting. |
+
+Under the hood, it uses three specialized databases together, each doing the job it's best at:
+
+- **PostgreSQL** — the permanent system of record for users, posts, comments, and follow
+  relationships. If it's not in here, it didn't happen.
+- **Redis** — a fast, temporary cache for feed pages, so re-loading your timeline doesn't hit
+  the main database every single time.
+- **MongoDB** — a flexible activity log that records "who did what, when" (follows, likes,
+  posts, comments) for later analysis, without needing rigid table columns.
+
+## Try it yourself (no coding required)
+
+Once it's [set up](#setup), the easiest way to explore the app is the interactive menu — just
+run it and answer the prompts, the same way you'd use any text-based menu:
+
+```bash
+python main.py
+```
+
+```text
+1. Login
+2. Register
+3. Exit
+```
+
+Register an account, log in, and you'll get a menu to create posts, follow people, comment,
+like posts, and view your feed — no command-line arguments to memorize.
 
 ## Contents
 
+- [What is this, in plain terms?](#what-is-this-in-plain-terms)
+- [Try it yourself](#try-it-yourself-no-coding-required)
 - [Setup](#setup)
 - [Usage](#usage)
 - [Project layout](#project-layout)
 - [Architecture](#architecture)
 - [The transactional follow/unfollow contract](#the-transactional-followunfollow-contract)
 - [Feed query performance](#feed-query-performance)
+- [Account security](#account-security)
 - [Error handling](#error-handling)
 - [Scope decisions](#scope-decisions)
 - [Testing, formatting, and type-checking](#testing-formatting-and-type-checking)
 
 ## Setup
+
+You'll need [Python 3.11+](https://www.python.org/downloads/) and
+[Docker](https://www.docker.com/products/docker-desktop/) installed. Docker runs the three
+databases (PostgreSQL, Redis, MongoDB) for you in the background — you don't need to install
+any of them yourself.
 
 ```bash
 python -m venv .venv
@@ -29,24 +82,24 @@ pip install -r requirements.txt
 pip install -e .
 
 copy .env.example .env        # cp .env.example .env on macOS/Linux
-docker-compose up -d          # PostgreSQL, Redis, MongoDB
+docker-compose up -d          # starts PostgreSQL, Redis, and MongoDB
 ```
 
-`docker-compose up -d` applies [`sql/schema.sql`](sql/schema.sql) automatically on first boot via
-Postgres's `docker-entrypoint-initdb.d` mechanism. To apply it to an existing database by hand:
+`docker-compose up -d` also creates all the database tables automatically the first time it
+runs, using [`sql/schema.sql`](sql/schema.sql). If you ever need to (re)apply that schema to an
+already-running database by hand:
 
 ```bash
 psql -h localhost -U social_platform -d social_platform -f sql/schema.sql
 ```
 
+Once setup is done, run `python main.py` and start exploring — see
+[Try it yourself](#try-it-yourself-no-coding-required) above.
+
 ## Usage
 
-Every operation is backed by a thin composition-root module in
-[`src/social_platform/cli/`](src/social_platform/cli/); each reads connection settings from the
-environment via [`ApplicationSettings`](src/social_platform/config/application_settings.py). You
-can reach them two ways: through [`main.py`](main.py), a single dispatcher over every command, or
-through the equivalent standalone script under [`scripts/`](scripts/) — both call the same
-composition-root `main()` function, so behavior is identical either way.
+Beyond the interactive menu, every action is also available as a direct, scriptable command —
+useful for automation, testing, or demoing a single action without going through the menu.
 
 ```bash
 # via the unified entry point
@@ -68,6 +121,12 @@ python scripts/analyze_feed_query.py   # diagnostic only; no main.py subcommand
 `follow-user` and `unfollow-user` are idempotent: running either twice in a row is a no-op
 success (`Follow result: already_exists`, `Unfollow result: did_not_exist`), never an error.
 
+*For developers: every operation above is backed by a thin composition-root module in
+[`src/social_platform/cli/`](src/social_platform/cli/); each reads connection settings from the
+environment via [`ApplicationSettings`](src/social_platform/config/application_settings.py).
+`main.py` and the standalone scripts under [`scripts/`](scripts/) call the same
+composition-root `main()` function, so behavior is identical either way.*
+
 ## Project layout
 
 ```text
@@ -80,9 +139,11 @@ Database_Fundamentals/
 │   ├── config/                   # environment-driven settings, no deps on other layers
 │   ├── models/                   # entities, result enums, exceptions — no deps on other layers
 │   ├── database/                 # connection pooling/factories — depends on config
+│   ├── security/                 # password hashing and strength rules — no deps on other layers
 │   ├── repositories/             # interfaces (DIP/ISP) + Postgres/Redis/Mongo implementations
 │   ├── services/                 # business logic — depends only on repository interfaces
-│   └── cli/                      # composition root — wires concrete repositories to services
+│   └── cli/                      # composition root — wires concrete repositories to services,
+│                                  # plus the interactive menu-driven session
 └── tests/
     ├── unit/                     # mirrors src/, mocked psycopg2 + fakeredis/mongomock + fakes
     └── integration/               # real docker-compose services, `pytest -m integration`
@@ -91,7 +152,8 @@ Database_Fundamentals/
 ## Architecture
 
 Dependency direction is strictly inward: `cli` → `services` → `repositories/interfaces.py` ←
-`repositories/postgres_*.py` / `redis_*.py` / `mongo_*.py` → `database` → `config` / `models`.
+`repositories/postgres_*.py` / `redis_*.py` / `mongo_*.py` → `database` / `security` →
+`config` / `models`.
 
 - **`models/`** — dataclass entities (`User`, `Post`, `Comment`, `FollowRelationship`,
   `FeedPostEntry`, `TrendingPostEntry`, `ActivityEvent`), the `FollowResult`/`UnfollowResult`
@@ -106,7 +168,8 @@ Dependency direction is strictly inward: `cli` → `services` → `repositories/
   constructor. No service ever imports psycopg2, redis, or pymongo.
 - **`cli/`** — the only layer allowed to construct concrete repositories
   ([`cli/_composition.py`](src/social_platform/cli/_composition.py)) and translate domain
-  exceptions into exit codes.
+  exceptions into exit codes. Also home to the interactive menu-driven session
+  ([`cli/interactive_session.py`](src/social_platform/cli/interactive_session.py)).
 
 ## The transactional follow/unfollow contract
 
@@ -181,6 +244,23 @@ restores it). With the index present, the plan shows an index scan on
 falls back to a sequential scan on `posts` plus an explicit sort step — the difference the
 composite index is there to eliminate.
 
+## Account security
+
+Passwords are never stored as typed. Registration and login both go through
+[`src/social_platform/security/`](src/social_platform/security/):
+
+- **Hashing** ([`password_hashing.py`](src/social_platform/security/password_hashing.py)) —
+  each password is combined with a random, per-user salt and run through `scrypt`, a
+  deliberately slow, memory-hard algorithm designed to resist brute-force guessing. Only the
+  salt and the resulting hash are stored; the original password is discarded immediately.
+  Verifying a login compares hashes using a constant-time comparison, so response timing can't
+  leak information about how close a guess was.
+- **Strength policy**
+  ([`password_policy.py`](src/social_platform/security/password_policy.py)) — a new password
+  must be at least 8 characters and include a lowercase letter, an uppercase letter, a digit,
+  and a special character. Registration rejects anything weaker with a clear
+  `WeakPasswordError` listing exactly what's missing, rather than a generic failure.
+
 ## Error handling
 
 | Exception | Raised when |
@@ -188,6 +268,7 @@ composite index is there to eliminate.
 | `InvalidFollowOperationError` | A user attempts to follow or unfollow themselves. |
 | `UserNotFoundError` | An operation references a user id that does not exist (foreign key violation). |
 | `UserAlreadyExistsError` | Registration is attempted with a username or email already taken. |
+| `WeakPasswordError` | A new password fails the strength policy above. |
 | `PostNotFoundError` | An operation references a post id that does not exist. |
 | `ConnectionPoolExhaustedError` | No PostgreSQL connection is available from the pool. |
 

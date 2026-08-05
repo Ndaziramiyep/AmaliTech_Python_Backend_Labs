@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
 from social_platform.models.entities import User
+from social_platform.models.exceptions import (
+    InvalidEmailError,
+    InvalidUsernameError,
+    WeakPasswordError,
+)
 from social_platform.repositories.interfaces import UserRepositoryInterface
 from social_platform.services.user_registration_service import UserRegistrationService
 
@@ -49,3 +56,36 @@ def test_register_user_hashes_the_same_password_differently_each_time() -> None:
     first_hash = user_repository.create_user_calls[0][2]
     second_hash = user_repository.create_user_calls[1][2]
     assert first_hash != second_hash
+
+
+def test_register_user_rejects_an_invalid_username_before_touching_the_repository() -> None:
+    """A malformed username is rejected without ever reaching the repository."""
+    user_repository = _RecordingUserRepository()
+    service = UserRegistrationService(user_repository)
+
+    with pytest.raises(InvalidUsernameError):
+        service.register_user("a", "ada@example.com", "Super-secret1", "Ada Lovelace")
+
+    assert user_repository.create_user_calls == []
+
+
+def test_register_user_rejects_an_invalid_email_before_touching_the_repository() -> None:
+    """A malformed email is rejected without ever reaching the repository."""
+    user_repository = _RecordingUserRepository()
+    service = UserRegistrationService(user_repository)
+
+    with pytest.raises(InvalidEmailError):
+        service.register_user("ada", "not-an-email", "Super-secret1", "Ada Lovelace")
+
+    assert user_repository.create_user_calls == []
+
+
+def test_register_user_rejects_a_weak_password_before_touching_the_repository() -> None:
+    """A password failing the strength policy is rejected without hashing or persisting it."""
+    user_repository = _RecordingUserRepository()
+    service = UserRegistrationService(user_repository)
+
+    with pytest.raises(WeakPasswordError):
+        service.register_user("ada", "ada@example.com", "weak", "Ada Lovelace")
+
+    assert user_repository.create_user_calls == []

@@ -55,7 +55,7 @@ def test_register_then_exit_logs_the_new_user_in_and_closes_the_connection_pool(
 ) -> None:
     """Registering lands the user on the action menu already logged in."""
     bundle = _build_fake_bundle()
-    scripted_input = _ScriptedInput(["2", "ada", "ada@example.com", "secret", "Ada Lovelace", "9"])
+    scripted_input = _ScriptedInput(["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "9"])
 
     exit_code = run_interactive_session(scripted_input, lambda: bundle)
 
@@ -64,6 +64,28 @@ def test_register_then_exit_logs_the_new_user_in_and_closes_the_connection_pool(
     assert "Registered user 1 (@ada)" in output
     assert "You are now logged in." in output
     bundle.connection_pool.close_all_connections.assert_called_once_with()
+
+
+def test_register_with_a_weak_password_reports_the_error_and_allows_retry(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A weak password is rejected with a clear message, without abandoning the session."""
+    bundle = _build_fake_bundle()
+    scripted_input = _ScriptedInput(
+        [
+            "2",
+            "ada",
+            "ada@example.com",
+            "weak",
+            "Ada Lovelace",
+            "3",
+        ]
+    )
+
+    exit_code = run_interactive_session(scripted_input, lambda: bundle)
+
+    assert exit_code == 0
+    assert "Password must contain" in capsys.readouterr().out
 
 
 def test_login_with_the_wrong_password_returns_to_the_guest_menu(
@@ -89,7 +111,7 @@ def test_create_post_uses_the_logged_in_user_as_the_author(
     post_repository = FakePostRepository()
     bundle = _build_fake_bundle(post_repository=post_repository)
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "secret", "Ada Lovelace", "1", "hello world", "", "", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "1", "hello world", "", "", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: bundle)
@@ -106,7 +128,7 @@ def test_follow_user_uses_the_logged_in_user_as_the_follower() -> None:
     follower_repository = FakeFollowerRepository()
     bundle = _build_fake_bundle(follower_repository=follower_repository)
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "secret", "Ada Lovelace", "2", "7", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "2", "7", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: bundle)
@@ -121,7 +143,7 @@ def test_view_feed_reports_no_posts_when_the_feed_is_empty(
     """An empty feed page prints a friendly message instead of nothing."""
     bundle = _build_fake_bundle()
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "secret", "Ada Lovelace", "6", "", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "6", "", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: bundle)
