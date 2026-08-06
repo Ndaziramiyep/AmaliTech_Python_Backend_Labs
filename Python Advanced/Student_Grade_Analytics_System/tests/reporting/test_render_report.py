@@ -29,6 +29,30 @@ def test_render_summary_section_includes_overall_statistics(
     assert f"Mean score          : {report['overall_statistics']['mean']}" in section
 
 
+def test_render_summary_section_shows_no_mode_when_every_score_is_unique(
+    sample_students: list[Student], sample_grade_records: list[GradeRecord]
+) -> None:
+    """When no score repeats, the summary explicitly says so instead of picking one."""
+    report = build_analytics_report(sample_students, sample_grade_records)
+    report["overall_statistics"]["mode"] = []
+
+    section = render_summary_section(report)
+
+    assert "Mode                : No mode" in section
+
+
+def test_render_summary_section_joins_every_tied_mode(
+    sample_students: list[Student], sample_grade_records: list[GradeRecord]
+) -> None:
+    """Every score tied for the mode is listed, comma-separated."""
+    report = build_analytics_report(sample_students, sample_grade_records)
+    report["overall_statistics"]["mode"] = [70.0, 90.0]
+
+    section = render_summary_section(report)
+
+    assert "Mode                : 70.0, 90.0" in section
+
+
 def test_render_grade_distribution_table_has_a_row_per_grade(
     sample_students: list[Student], sample_grade_records: list[GradeRecord]
 ) -> None:

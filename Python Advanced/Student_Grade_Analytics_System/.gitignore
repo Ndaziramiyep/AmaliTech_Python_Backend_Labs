@@ -6,4 +6,3 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 reports/*.json
-reports/charts/
