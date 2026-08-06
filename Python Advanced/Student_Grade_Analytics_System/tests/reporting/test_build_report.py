@@ -36,6 +36,14 @@ def test_build_major_breakdown_section_groups_by_major(
     assert majors["Mathematics"]["average_score"] == 55.0
 
 
+def test_build_major_breakdown_section_skips_a_major_with_no_scores(
+    sample_students: list[Student],
+) -> None:
+    """A major whose students have no recorded scores is left out of the breakdown."""
+    section = build_major_breakdown_section(sample_students, scores_by_student={})
+    assert section == []
+
+
 def test_build_analytics_report_has_expected_totals(
     sample_students: list[Student], sample_grade_records: list[GradeRecord]
 ) -> None:

@@ -89,3 +89,15 @@ def test_load_grade_records_from_csv_raises_for_missing_column(tmp_path: Path) -
     csv_path.write_text("student_id,name,major,year\nS001,Alice,CS,2\n", encoding="utf-8")
     with pytest.raises(InvalidGradeRecordError):
         load_grade_records_from_csv(csv_path)
+
+
+def test_load_students_from_csv_raises_for_invalid_year(tmp_path: Path) -> None:
+    """A non-numeric year field raises an invalid-record error."""
+    csv_path = tmp_path / "broken.csv"
+    csv_path.write_text(
+        "student_id,name,major,year,course_code,semester,score\n"
+        "S001,Alice,CS,not-a-number,CS201,Fall2023,88.5\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(InvalidGradeRecordError):
+        load_students_from_csv(csv_path)

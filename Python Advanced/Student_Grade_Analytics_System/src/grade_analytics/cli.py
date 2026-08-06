@@ -15,11 +15,9 @@ from grade_analytics.file_io.write_report import write_report_to_json
 from grade_analytics.models.exceptions import StudentDataError
 from grade_analytics.reporting.build_report import AnalyticsReport, build_analytics_report
 from grade_analytics.reporting.render_report import print_analytics_report
-from grade_analytics.reporting.visualize_report import generate_all_visualizations
 
 _DEFAULT_INPUT = Path("data/sample_students.csv")
 _DEFAULT_OUTPUT = Path("reports/grade_report.json")
-_DEFAULT_CHARTS_DIR = Path("reports/charts")
 
 
 def parse_command_line_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -32,15 +30,6 @@ def parse_command_line_arguments(argv: list[str] | None = None) -> argparse.Name
         "--output", type=Path, default=_DEFAULT_OUTPUT, help="Path to write the JSON report to"
     )
     parser.add_argument("--top-n", type=int, default=5, help="Number of top performers to include")
-    parser.add_argument(
-        "--visualize", action="store_true", help="Also render PNG chart visualizations"
-    )
-    parser.add_argument(
-        "--charts-dir",
-        type=Path,
-        default=_DEFAULT_CHARTS_DIR,
-        help="Directory to write chart PNGs to (with --visualize)",
-    )
     return parser.parse_args(argv)
 
 
@@ -53,15 +42,19 @@ def run_analytics_pipeline(input_path: Path, output_path: Path, top_n: int) -> A
     return report
 
 
+def _ensure_utf8_stdout(stream: object) -> None:
+    """Reconfigure ``stream`` to UTF-8 if it's a real stdout stream using another encoding.
+
+    The report's distribution bars use Unicode block characters, which
+    Windows' legacy console code pages (e.g. cp1252) can't encode.
+    """
+    if isinstance(stream, io.TextIOWrapper) and stream.encoding.lower() not in {"utf-8", "utf8"}:
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the CLI: parse arguments, build the report, and print it."""
-    # The report's distribution bars use Unicode block characters, which
-    # Windows' legacy console code pages (e.g. cp1252) can't encode.
-    if isinstance(sys.stdout, io.TextIOWrapper) and sys.stdout.encoding.lower() not in {
-        "utf-8",
-        "utf8",
-    }:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _ensure_utf8_stdout(sys.stdout)
     args = parse_command_line_arguments(argv)
     try:
         report = run_analytics_pipeline(args.input, args.output, args.top_n)
@@ -70,11 +63,6 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(1) from error
     print_analytics_report(report)
     print(f"\nReport written to {args.output}")
-
-    if args.visualize:
-        chart_paths = generate_all_visualizations(report, args.charts_dir)
-        for chart_path in chart_paths:
-            print(f"Chart written to {chart_path}")
 
 
 if __name__ == "__main__":

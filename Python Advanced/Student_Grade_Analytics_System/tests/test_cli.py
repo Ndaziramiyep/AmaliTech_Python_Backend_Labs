@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
 from pytest_mock import MockerFixture
 
-from grade_analytics.cli import main, parse_command_line_arguments, run_analytics_pipeline
+from grade_analytics.cli import (
+    _ensure_utf8_stdout,
+    main,
+    parse_command_line_arguments,
+    run_analytics_pipeline,
+)
 from grade_analytics.models.exceptions import StudentDataError
 from grade_analytics.reporting.render_report import print_analytics_report
 
@@ -30,31 +36,27 @@ def test_parse_command_line_arguments_honors_overrides() -> None:
     assert args.top_n == 3
 
 
-def test_parse_command_line_arguments_visualize_defaults_to_off() -> None:
-    """--visualize is opt-in; charts are not generated unless requested."""
-    args = parse_command_line_arguments([])
-    assert args.visualize is False
-    assert args.charts_dir == Path("reports/charts")
+def test_ensure_utf8_stdout_reconfigures_a_non_utf8_text_stream() -> None:
+    """A real text stream on a legacy code page (e.g. Windows cp1252) is switched to UTF-8."""
+    stream = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+
+    _ensure_utf8_stdout(stream)
+
+    assert stream.encoding.lower() in {"utf-8", "utf8"}
 
 
-def test_main_writes_charts_when_visualize_flag_is_set(
-    sample_csv_file: Path, tmp_path: Path
-) -> None:
-    """Passing --visualize renders chart PNGs alongside the JSON report."""
-    charts_dir = tmp_path / "charts"
-    main(
-        [
-            "--input",
-            str(sample_csv_file),
-            "--output",
-            str(tmp_path / "report.json"),
-            "--visualize",
-            "--charts-dir",
-            str(charts_dir),
-        ]
-    )
+def test_ensure_utf8_stdout_leaves_a_utf8_text_stream_alone() -> None:
+    """A stream already on UTF-8 is left as-is."""
+    stream = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
 
-    assert list(charts_dir.glob("*.png"))
+    _ensure_utf8_stdout(stream)
+
+    assert stream.encoding.lower() in {"utf-8", "utf8"}
+
+
+def test_ensure_utf8_stdout_ignores_a_non_text_io_wrapper_stream() -> None:
+    """A stream that isn't a real TextIOWrapper (e.g. pytest's capsys) is left untouched."""
+    _ensure_utf8_stdout(object())
 
 
 def test_run_analytics_pipeline_writes_report_file(sample_csv_file: Path, tmp_path: Path) -> None:

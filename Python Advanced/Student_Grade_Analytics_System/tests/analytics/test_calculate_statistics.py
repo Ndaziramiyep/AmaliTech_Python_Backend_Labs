@@ -32,6 +32,12 @@ def test_calculate_median_of_odd_length_list() -> None:
     assert calculate_median([70.0, 90.0, 80.0]) == 80.0
 
 
+def test_calculate_median_rejects_empty_list() -> None:
+    """An empty list has no median."""
+    with pytest.raises(ValueError):
+        calculate_median([])
+
+
 def test_calculate_mode_returns_single_most_frequent_value() -> None:
     """When exactly one value repeats the most, it is the sole mode."""
     assert calculate_mode([70.0, 70.0, 70.0, 90.0, 55.0]) == [70.0]
@@ -47,10 +53,22 @@ def test_calculate_mode_returns_empty_when_no_value_repeats() -> None:
     assert calculate_mode([70.0, 80.0, 90.0]) == []
 
 
+def test_calculate_mode_rejects_empty_list() -> None:
+    """An empty list has no mode."""
+    with pytest.raises(ValueError):
+        calculate_mode([])
+
+
 def test_calculate_percentile_rank_of_median_value() -> None:
     """A value at the middle of a sorted list sits around the 50th percentile."""
     values = [10.0, 20.0, 30.0, 40.0, 50.0]
     assert calculate_percentile_rank(30.0, values) == 60.0
+
+
+def test_calculate_percentile_rank_rejects_empty_list() -> None:
+    """An empty list has no percentile rank."""
+    with pytest.raises(ValueError):
+        calculate_percentile_rank(50.0, [])
 
 
 def test_find_highest_and_lowest_score() -> None:

@@ -25,10 +25,7 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "UP", "B", "N", "C90"]
 
 [tool.mypy]
-# Set above the project's 3.11 floor solely so mypy can parse numpy's stubs
-# (pulled in transitively via matplotlib), which use PEP 695 `type` aliases
-# gated behind 3.12. Project code itself still targets 3.11 (see [project]).
-python_version = "3.12"
+python_version = "3.11"
 mypy_path = "src"
 explicit_package_bases = true
 strict = true
@@ -36,4 +33,15 @@ warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra --cov=grade_analytics --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+source = ["src/grade_analytics"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
