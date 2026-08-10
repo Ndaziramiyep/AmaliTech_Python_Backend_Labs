@@ -10,6 +10,7 @@ from grade_analytics.analytics.aggregate_records import (
     group_scores_by_student,
     group_students_by_major,
     group_students_by_year,
+    group_students_by_year_and_semester,
     order_grade_distribution,
 )
 from grade_analytics.models.entities import GradeRecord, Student
@@ -56,6 +57,37 @@ def test_group_students_by_year_groups_correctly(sample_students: list[Student])
     """Students are grouped into lists keyed by their enrollment year."""
     grouped = group_students_by_year(sample_students)
     assert [student.student_id for student in grouped[2]] == ["S001"]
+
+
+def test_group_students_by_year_and_semester_groups_correctly(
+    sample_students: list[Student], sample_grade_records: list[GradeRecord]
+) -> None:
+    """Students are grouped into lists keyed by (enrollment year, semester) pairs."""
+    grouped = group_students_by_year_and_semester(sample_students, sample_grade_records)
+    assert [student.student_id for student in grouped[(2, "Fall2023")]] == ["S001"]
+    assert [student.student_id for student in grouped[(2, "Spring2024")]] == ["S001"]
+    assert [student.student_id for student in grouped[(3, "Fall2023")]] == ["S002"]
+    assert [student.student_id for student in grouped[(1, "Fall2023")]] == ["S003"]
+
+
+def test_group_students_by_year_and_semester_deduplicates_multiple_records(
+    sample_students: list[Student],
+) -> None:
+    """A student with two records in the same semester appears only once in that group."""
+    records = [
+        GradeRecord(student_id="S001", course_code="CS201", semester="Fall2023", score=88.5),
+        GradeRecord(student_id="S001", course_code="CS305", semester="Fall2023", score=91.0),
+    ]
+    grouped = group_students_by_year_and_semester(sample_students, records)
+    assert [student.student_id for student in grouped[(2, "Fall2023")]] == ["S001"]
+
+
+def test_group_students_by_year_and_semester_missing_key_returns_empty_list(
+    sample_students: list[Student], sample_grade_records: list[GradeRecord]
+) -> None:
+    """defaultdict semantics: an absent (year, semester) key yields an empty list."""
+    grouped = group_students_by_year_and_semester(sample_students, sample_grade_records)
+    assert grouped[(4, "Fall2023")] == []
 
 
 def test_group_scores_by_student_collects_all_scores(

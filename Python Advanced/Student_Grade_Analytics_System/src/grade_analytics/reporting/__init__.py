@@ -1,1 +1,1 @@
-"""Assembling the analytics report and presenting it as text or charts."""
+"""Assembling the analytics report and rendering it as text."""

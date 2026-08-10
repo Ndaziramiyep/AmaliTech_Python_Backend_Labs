@@ -1,9 +1,4 @@
-"""Rolling-average tracking backed by a fixed-size ``deque``.
-
-A ``deque(maxlen=...)`` gives O(1) appends and automatically discards the
-oldest value once full, which is a much better fit here than a growing
-``list`` that would need manual truncation and O(n) slicing on every update.
-"""
+"""Rolling-average tracking backed by a fixed-size ``deque``."""
 
 from __future__ import annotations
 
@@ -34,12 +29,7 @@ class RollingAverageTracker:
 
 
 def track_semester_trend(scores: list[float], window_size: int) -> list[float]:
-    """Compute the rolling average of ``scores`` over a ``window_size`` window.
-
-    Returns one rolling-average value per input score, using a
-    :class:`RollingAverageTracker` to model the trend across successive
-    semesters.
-    """
+    """Return one rolling average per score in ``scores``, over a ``window_size`` window."""
     tracker = RollingAverageTracker(window_size)
     trend: list[float] = []
     for score in scores:
