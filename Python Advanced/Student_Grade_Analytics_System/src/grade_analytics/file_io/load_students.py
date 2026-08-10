@@ -1,10 +1,4 @@
-"""Load student and grade-record data out of CSV files.
-
-Expected CSV columns: ``student_id, name, major, year, course_code,
-semester, score``. One row represents one student's score in one course
-during one semester; a student's identity fields are repeated on every one
-of their rows (a denormalized, spreadsheet-friendly layout).
-"""
+"""Load student and grade-record data out of CSV files."""
 
 from __future__ import annotations
 
@@ -75,11 +69,7 @@ def load_grade_records_from_csv(path: Path | str) -> list[GradeRecord]:
 
 
 def stream_grade_records_from_csv(path: Path | str) -> Iterator[GradeRecord]:
-    """Lazily yield grade records from ``path`` one row at a time.
-
-    Prefer this over :func:`load_grade_records_from_csv` for very large
-    files: memory use stays O(1) in the number of rows instead of O(n).
-    """
+    """Lazily yield grade records from ``path`` one row at a time."""
     for row in _open_csv_rows(path):
         yield _row_to_grade_record(row)
 

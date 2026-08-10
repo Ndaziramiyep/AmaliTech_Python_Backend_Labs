@@ -1,11 +1,4 @@
-"""Structured data models for students, courses, and grade records.
-
-``Student`` and ``Course`` use slotted, frozen dataclasses so instances are
-immutable and avoid a per-instance ``__dict__`` (lower memory footprint when
-thousands of records are loaded). ``GradeRecord`` uses a ``NamedTuple``,
-which is the lightest structure available for a simple, fixed tuple of
-scalar fields read straight off a CSV row.
-"""
+"""Structured data models for students, courses, and grade records."""
 
 from __future__ import annotations
 

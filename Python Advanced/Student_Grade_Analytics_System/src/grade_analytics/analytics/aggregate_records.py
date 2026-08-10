@@ -1,9 +1,4 @@
-"""Collection-based aggregation of students and grade records.
-
-Uses :class:`collections.Counter` for tallying, :class:`collections.defaultdict`
-for grouping, and :class:`collections.OrderedDict` for report sections whose
-key order must be deterministic and independent of insertion or count order.
-"""
+"""Collection-based aggregation of students and grade records."""
 
 from __future__ import annotations
 
@@ -43,6 +38,22 @@ def group_students_by_year(students: list[Student]) -> defaultdict[int, list[Stu
     for student in students:
         students_by_year[student.year].append(student)
     return students_by_year
+
+
+def group_students_by_year_and_semester(
+    students: list[Student], records: list[GradeRecord]
+) -> defaultdict[tuple[int, str], list[Student]]:
+    """Group ``students`` into lists keyed by (enrollment year, semester) pairs from ``records``."""
+    students_by_id = {student.student_id: student for student in students}
+    seen_keys: set[tuple[int, str, str]] = set()
+    grouped: defaultdict[tuple[int, str], list[Student]] = defaultdict(list)
+    for record in records:
+        student = students_by_id[record.student_id]
+        dedup_key = (student.year, record.semester, student.student_id)
+        if dedup_key not in seen_keys:
+            seen_keys.add(dedup_key)
+            grouped[(student.year, record.semester)].append(student)
+    return grouped
 
 
 def group_scores_by_student(records: list[GradeRecord]) -> defaultdict[str, list[float]]:

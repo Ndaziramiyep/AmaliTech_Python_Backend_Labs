@@ -1,11 +1,4 @@
-"""Render the analytics report as a professional terminal report.
-
-Tables use plain ASCII (``+``, ``-``, ``|``) rather than Unicode box-drawing
-characters, since the legacy code page many Windows consoles still default
-to cannot display the latter reliably. The distribution bar uses the
-Unicode block characters ``█``/``░``, which render correctly on UTF-8
-terminals (Windows Terminal, VS Code's integrated terminal).
-"""
+"""Render the analytics report as a terminal report with tables and a bar chart."""
 
 from __future__ import annotations
 
@@ -19,7 +12,7 @@ def _build_ascii_table(table_headers: list[str], table_rows: list[list[str]]) ->
     """Render ``table_headers``/``table_rows`` as a bordered ASCII table."""
     column_count = len(table_headers)
     column_widths = [
-        max(len(str(table_row[column_index])) for table_row in ([table_headers] + table_rows))
+        max(len(str(table_row[column_index])) for table_row in [table_headers, *table_rows])
         for column_index in range(column_count)
     ]
     border_line = "+" + "+".join("-" * (column_width + 2) for column_width in column_widths) + "+"
