@@ -7,8 +7,11 @@ from typing import TypedDict
 
 from grade_analytics.analytics.aggregate_records import (
     count_grade_distribution,
+    group_records_by_year_and_semester,
     group_scores_by_student,
-    group_students_by_major,
+    group_scores_by_student_and_course,
+    group_students_by_module,
+    group_students_by_year_and_semester,
     order_grade_distribution,
 )
 from grade_analytics.analytics.calculate_statistics import (
@@ -36,14 +39,26 @@ class RankingEntry(TypedDict):
     rank: int
     student_id: str
     name: str
-    major: str
+    module: str
+    course_scores: dict[str, float]
     average_score: float
 
 
-class MajorBreakdownEntry(TypedDict):
-    """Aggregate performance for one major."""
+class YearSemesterRanking(TypedDict):
+    """Students ranked against only their own (enrollment year, semester) peers."""
 
-    major: str
+    year: int
+    semester: str
+    courses: list[str]
+    top_performers: list[RankingEntry]
+    bottom_performers: list[RankingEntry]
+    full_ranking: list[RankingEntry]
+
+
+class ModuleBreakdownEntry(TypedDict):
+    """Aggregate performance for one module."""
+
+    module: str
     student_count: int
     average_score: float
 
@@ -66,17 +81,19 @@ class AnalyticsReport(TypedDict):
     total_grade_records: int
     overall_statistics: SummaryStatistics
     grade_distribution: list[GradeDistributionEntry]
-    top_performers: list[RankingEntry]
-    full_ranking: list[RankingEntry]
-    major_breakdown: list[MajorBreakdownEntry]
+    rankings_by_group: list[YearSemesterRanking]
+    module_breakdown: list[ModuleBreakdownEntry]
 
 
-def _convert_ranked_student_to_entry(ranked_student: RankedStudent) -> RankingEntry:
+def _convert_ranked_student_to_entry(
+    ranked_student: RankedStudent, course_scores: dict[str, float]
+) -> RankingEntry:
     return RankingEntry(
         rank=ranked_student.rank,
         student_id=ranked_student.student.student_id,
         name=ranked_student.student.name,
-        major=ranked_student.student.major,
+        module=ranked_student.student.module,
+        course_scores=course_scores,
         average_score=round(ranked_student.average_score, 2),
     )
 
@@ -97,28 +114,63 @@ def build_grade_distribution_section(records: list[GradeRecord]) -> list[GradeDi
     ]
 
 
-def build_major_breakdown_section(
+def build_module_breakdown_section(
     students: list[Student], scores_by_student: dict[str, list[float]]
-) -> list[MajorBreakdownEntry]:
-    """Build the per-major aggregate performance report section."""
-    students_by_major = group_students_by_major(students)
-    breakdown_entries: list[MajorBreakdownEntry] = []
-    for major, major_students in students_by_major.items():
-        major_scores = [
+) -> list[ModuleBreakdownEntry]:
+    """Build the per-module aggregate performance report section."""
+    students_by_module = group_students_by_module(students)
+    breakdown_entries: list[ModuleBreakdownEntry] = []
+    for module, module_students in students_by_module.items():
+        module_scores = [
             score
-            for student in major_students
+            for student in module_students
             for score in scores_by_student.get(student.student_id, [])
         ]
-        if not major_scores:
+        if not module_scores:
             continue
         breakdown_entries.append(
-            MajorBreakdownEntry(
-                major=major,
-                student_count=len(major_students),
-                average_score=round(calculate_mean(major_scores), 2),
+            ModuleBreakdownEntry(
+                module=module,
+                student_count=len(module_students),
+                average_score=round(calculate_mean(module_scores), 2),
             )
         )
     return breakdown_entries
+
+
+def build_rankings_by_group(
+    students: list[Student], records: list[GradeRecord], top_n: int
+) -> list[YearSemesterRanking]:
+    """Rank students against only their own (enrollment year, semester) peers."""
+    students_by_group = group_students_by_year_and_semester(students, records)
+    records_by_group = group_records_by_year_and_semester(students, records)
+
+    groups: list[YearSemesterRanking] = []
+    for year, semester in sorted(students_by_group):
+        group_records = records_by_group[(year, semester)]
+        group_scores = group_scores_by_student(group_records)
+        course_scores_by_student = group_scores_by_student_and_course(group_records)
+        ranked_students = rank_students_by_average(
+            students_by_group[(year, semester)], group_scores
+        )
+        ranking_entries = [
+            _convert_ranked_student_to_entry(
+                ranked_student, course_scores_by_student[ranked_student.student.student_id]
+            )
+            for ranked_student in ranked_students
+        ]
+        bottom_start = max(top_n, len(ranking_entries) - top_n)
+        groups.append(
+            YearSemesterRanking(
+                year=year,
+                semester=semester,
+                courses=sorted({record.course_code for record in group_records}),
+                top_performers=ranking_entries[:top_n],
+                bottom_performers=ranking_entries[bottom_start:],
+                full_ranking=ranking_entries,
+            )
+        )
+    return groups
 
 
 def build_analytics_report(
@@ -127,10 +179,6 @@ def build_analytics_report(
     """Build the complete :class:`AnalyticsReport` from students and grade records."""
     scores_by_student = group_scores_by_student(records)
     all_scores = [record.score for record in records]
-    ranked_students = rank_students_by_average(students, scores_by_student)
-    ranking_entries = [
-        _convert_ranked_student_to_entry(ranked_student) for ranked_student in ranked_students
-    ]
 
     return AnalyticsReport(
         generated_at=datetime.now(UTC).isoformat(),
@@ -144,7 +192,6 @@ def build_analytics_report(
             lowest=find_lowest_score(all_scores) or 0.0,
         ),
         grade_distribution=build_grade_distribution_section(records),
-        top_performers=ranking_entries[:top_n],
-        full_ranking=ranking_entries,
-        major_breakdown=build_major_breakdown_section(students, scores_by_student),
+        rankings_by_group=build_rankings_by_group(students, records, top_n),
+        module_breakdown=build_module_breakdown_section(students, scores_by_student),
     )

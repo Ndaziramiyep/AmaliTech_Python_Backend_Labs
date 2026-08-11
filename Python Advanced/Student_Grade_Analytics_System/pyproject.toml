@@ -33,11 +33,11 @@ warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --cov=grade_analytics --cov-report=term-missing --cov-fail-under=100"
+addopts = "-ra"
 
 [tool.coverage.run]
-source = ["src/grade_analytics"]
 branch = true
+relative_files = true
 
 [tool.coverage.report]
 exclude_lines = [

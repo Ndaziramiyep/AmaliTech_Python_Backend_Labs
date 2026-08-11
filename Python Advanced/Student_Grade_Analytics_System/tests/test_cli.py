@@ -96,7 +96,7 @@ def test_main_prints_full_report_to_stdout(
     output = capsys.readouterr().out
     assert "STUDENT GRADE ANALYTICS REPORT" in output
     assert "GRADE DISTRIBUTION" in output
-    assert "MAJOR BREAKDOWN" in output
+    assert "MODULE BREAKDOWN" in output
     assert "Report written to" in output
 
 

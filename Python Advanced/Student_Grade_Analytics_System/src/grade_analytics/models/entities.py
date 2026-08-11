@@ -14,7 +14,7 @@ class Student:
 
     student_id: str
     name: str
-    major: str
+    module: str
     year: int
 
 

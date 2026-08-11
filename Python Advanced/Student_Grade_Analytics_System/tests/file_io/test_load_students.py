@@ -86,17 +86,62 @@ def test_load_grade_records_from_csv_raises_for_permission_error(
 def test_load_grade_records_from_csv_raises_for_missing_column(tmp_path: Path) -> None:
     """A CSV missing a required column raises an invalid-record error."""
     csv_path = tmp_path / "broken.csv"
-    csv_path.write_text("student_id,name,major,year\nS001,Alice,CS,2\n", encoding="utf-8")
+    csv_path.write_text("student_id,name,module,year\nS001,Alice,CS,2\n", encoding="utf-8")
     with pytest.raises(InvalidGradeRecordError):
         load_grade_records_from_csv(csv_path)
+
+
+def test_load_grade_records_from_csv_raises_for_duplicate_module_in_one_semester(
+    tmp_path: Path,
+) -> None:
+    """The same student can't have two scores for the same module in the same semester."""
+    csv_path = tmp_path / "duplicate.csv"
+    csv_path.write_text(
+        "student_id,name,module,year,course_code,semester,score\n"
+        "S001,Alice,CS,2,CS201,Semester 1,88.5\n"
+        "S001,Alice,CS,2,CS201,Semester 1,90.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(InvalidGradeRecordError):
+        load_grade_records_from_csv(csv_path)
+
+
+def test_stream_grade_records_from_csv_raises_for_duplicate_module_in_one_semester(
+    tmp_path: Path,
+) -> None:
+    """The generator-based loader enforces the same duplicate-module check."""
+    csv_path = tmp_path / "duplicate.csv"
+    csv_path.write_text(
+        "student_id,name,module,year,course_code,semester,score\n"
+        "S001,Alice,CS,2,CS201,Semester 1,88.5\n"
+        "S001,Alice,CS,2,CS201,Semester 1,90.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(InvalidGradeRecordError):
+        list(stream_grade_records_from_csv(csv_path))
+
+
+def test_load_grade_records_from_csv_allows_same_module_in_different_semesters(
+    tmp_path: Path,
+) -> None:
+    """The same module recorded in a different semester is not a duplicate."""
+    csv_path = tmp_path / "not_duplicate.csv"
+    csv_path.write_text(
+        "student_id,name,module,year,course_code,semester,score\n"
+        "S001,Alice,CS,2,CS201,Semester 1,88.5\n"
+        "S001,Alice,CS,2,CS201,Semester 2,90.0\n",
+        encoding="utf-8",
+    )
+    records = load_grade_records_from_csv(csv_path)
+    assert len(records) == 2
 
 
 def test_load_students_from_csv_raises_for_invalid_year(tmp_path: Path) -> None:
     """A non-numeric year field raises an invalid-record error."""
     csv_path = tmp_path / "broken.csv"
     csv_path.write_text(
-        "student_id,name,major,year,course_code,semester,score\n"
-        "S001,Alice,CS,not-a-number,CS201,Fall2023,88.5\n",
+        "student_id,name,module,year,course_code,semester,score\n"
+        "S001,Alice,CS,not-a-number,CS201,Semester 1,88.5\n",
         encoding="utf-8",
     )
     with pytest.raises(InvalidGradeRecordError):

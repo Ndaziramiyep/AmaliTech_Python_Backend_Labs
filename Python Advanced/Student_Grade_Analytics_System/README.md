@@ -31,7 +31,9 @@ course per semester — see [Sample input](#usage)), the tool:
 
 1. Loads the rows into typed `Student` and `GradeRecord` objects.
 2. Aggregates them: grade distribution (A-F tally), scores grouped by
-   student and by major, students ranked by average score.
+   student and by module, students ranked by average score against only
+   their own (enrollment year, semester) peers — never against a
+   different year, a different semester, or a different course.
 3. Computes descriptive statistics: mean, median, mode, highest, lowest.
 4. Assembles everything into one JSON-serializable report.
 5. Prints a human-readable terminal report and writes the JSON report to
@@ -80,23 +82,42 @@ python main.py --input data/sample_students.csv --output reports/grade_report.js
 ### Expected CSV format
 
 ```csv
-student_id,name,major,year,course_code,semester,score
-S001,Alice Uwase,Computer Science,2,CS201,Fall2023,88.5
-S001,Alice Uwase,Computer Science,2,CS305,Fall2023,91.0
+student_id,name,module,year,course_code,semester,score
+S001,Alice Uwase,CSC,2,CSC,Semester 1,88.5
+S001,Alice Uwase,CSC,2,Math,Semester 1,91.0
 ```
 
-One row is one student's score in one course during one semester. A
-student's identity fields (`name`, `major`, `year`) are repeated on every
-one of their rows — a denormalized, spreadsheet-friendly layout chosen
-because it's what a grade export from a student information system
-typically looks like, and it keeps the loader a single flat pass with no
-join step. When the same `student_id` appears on multiple rows, the first
-occurrence wins for identity fields (see
+One row is one student's score in one course during one semester.
+`semester` only ever takes one of two values, `Semester 1` or
+`Semester 2` — each academic `year` has exactly two of them, so the tool
+never needs to reason about a growing, calendar-dated set of terms
+(`Fall2023`, `Spring2024`, ...). `module` is the student's department/track,
+abbreviated in the bundled sample data (`Math`, `CSC`, `PH`, `BIO`); it's a
+single fixed value per student, separate from `course_code`, which is the
+individual course a row's score belongs to. A student typically has
+several rows per semester, one per course
+(`course_code`); see [Module-by-module design notes](#module-by-module-design-notes)
+for why ranking averages all of a student's courses in a semester rather
+than comparing one course's score against another. In the bundled sample
+data, every student in the same `(year, semester)` cohort takes the exact
+same set of `course_code`s, regardless of their own `module` — a shared
+curriculum per class year, not per department — so that comparing their
+averages is comparing like with like. A student's identity fields (`name`,
+`module`, `year`) are repeated on every one of their rows — a denormalized,
+spreadsheet-friendly layout chosen because it's what a grade export from a
+student information system typically looks like, and it keeps the loader a
+single flat pass with no join step. When the same `student_id` appears on
+multiple rows, the first occurrence wins for identity fields (see
 [load_students.py](src/grade_analytics/file_io/load_students.py)); later
 rows only contribute additional grade records.
 
 Scores must be numeric and within `0.0`-`100.0`; anything else raises
-`InvalidGradeRecordError` (see [Error handling](#error-handling)).
+`InvalidGradeRecordError` (see [Error handling](#error-handling)). The same
+student also can't have two rows for the same `course_code` in the same
+`semester` — that would double-count one course into their average — so
+`load_grade_records_from_csv`/`stream_grade_records_from_csv` reject a
+duplicate `(student_id, semester, course_code)` combination with the same
+error.
 
 ### Sample output (stdout)
 
@@ -114,15 +135,15 @@ UTF-8 on startup before printing anything (see
 ```
 ==============================================================================
                         STUDENT GRADE ANALYTICS REPORT
-                 Generated: 2026-07-30T10:50:26.561968+00:00
+                 Generated: 2026-08-10T15:19:07.584846+00:00
 ==============================================================================
 
 SUMMARY
   Total students      : 8
-  Total grade records : 33
-  Mean score          : 81.82
-  Median score        : 84.0
-  Mode                : 82.0, 98.0
+  Total grade records : 32
+  Mean score          : 81.0
+  Median score        : 84.75
+  Mode                : 98.0
   Highest score       : 99.0
   Lowest score        : 55.0
 
@@ -130,79 +151,123 @@ GRADE DISTRIBUTION
 +-------+-------+------------+--------------------------+
 | Grade | Count | Percentage | Distribution             |
 +-------+-------+------------+--------------------------+
-| A     | 12    | 36.36%     | █████████░░░░░░░░░░░░░░░ |
-| B     | 8     | 24.24%     | ██████░░░░░░░░░░░░░░░░░░ |
-| C     | 6     | 18.18%     | ████░░░░░░░░░░░░░░░░░░░░ |
-| D     | 4     | 12.12%     | ███░░░░░░░░░░░░░░░░░░░░░ |
-| F     | 3     | 9.09%      | ██░░░░░░░░░░░░░░░░░░░░░░ |
+| A     | 11    | 34.38%     | ████████░░░░░░░░░░░░░░░░ |
+| B     | 8     | 25.00%     | ██████░░░░░░░░░░░░░░░░░░ |
+| C     | 5     | 15.62%     | ████░░░░░░░░░░░░░░░░░░░░ |
+| D     | 5     | 15.62%     | ████░░░░░░░░░░░░░░░░░░░░ |
+| F     | 3     | 9.38%      | ██░░░░░░░░░░░░░░░░░░░░░░ |
 +-------+-------+------------+--------------------------+
 
-TOP PERFORMERS
-+------+----------------+------------------+---------------+
-| Rank | Name           | Major            | Average Score |
-+------+----------------+------------------+---------------+
-| 1    | Elena Ingabire | Physics          | 97.0          |
-| 2    | Alice Uwase    | Computer Science | 93.0          |
-| 3    | Grace Umutoni  | Biology          | 91.25         |
-| 4    | Carla Mukamana | Mathematics      | 86.0          |
-| 5    | Grace Umutoni  | Biology          | 85.25         |
-+------+----------------+------------------+---------------+
+TOP PERFORMERS - Year 1, Semester 1
++------+----------------+------+------+------+
+| Rank | Name           | BIO  | Math | Avg  |
++------+----------------+------+------+------+
+| 1    | Grace Umutoni  | 92.0 | 90.0 | 91.0 |
+| 2    | Carla Mukamana | 80.0 | 84.0 | 82.0 |
++------+----------------+------+------+------+
 
-MAJOR BREAKDOWN
-+------------------+---------------+---------------+
-| Major            | Student Count | Average Score |
-+------------------+---------------+---------------+
-| Computer Science | 2             | 84.1          |
-| Mathematics      | 2             | 72.21         |
-| Physics          | 2             | 82.44         |
-| Biology          | 2             | 86.75         |
-+------------------+---------------+---------------+
+TOP PERFORMERS - Year 2, Semester 1
++------+-----------------+------+------+-------+
+| Rank | Name            | CSC  | Math | Avg   |
++------+-----------------+------+------+-------+
+| 1    | Alice Uwase     | 88.5 | 91.0 | 89.75 |
+| 2    | David Niyonzima | 59.5 | 63.0 | 61.25 |
++------+-----------------+------+------+-------+
+
+... (one TOP PERFORMERS table per (year, semester) group actually present
+in the data — 8 groups for the bundled sample file, since each of the 4
+years now has exactly two semesters, and every group has exactly the 2
+students enrolled in that year. The two score columns are that group's
+`courses` — the two `course_code`s shared by everyone in the group — not a
+fixed pair across the whole report; Year 3's columns are `BIO`/`CSC`,
+Year 4's are `Math`/`PH`. Trimmed here for brevity. A group larger than
+`--top-n` also gets its own BOTTOM PERFORMERS table right after its TOP
+PERFORMERS one — none of the sample groups are large enough to trigger
+that at the default `--top-n 5`, but running with a smaller `--top-n`
+(e.g. `--top-n 1`) shows it.)
+
+MODULE BREAKDOWN
++--------+---------------+---------------+
+| Module | Student Count | Average Score |
++--------+---------------+---------------+
+| Math   | 2             | 74.62         |
+| BIO    | 2             | 88.25         |
+| CSC    | 2             | 82.88         |
+| PH     | 2             | 78.25         |
++--------+---------------+---------------+
 
 Report written to reports\grade_report.json
 ```
 
-> Note: the bundled `data/sample_students.csv` has a data quirk left in on
-> purpose for demonstration — row 29 labels student `S008` as "Grace
-> Umutoni" while every other `S008` row says "Henry Nkurunziza". Since
-> `load_students_from_csv` keeps the first name seen per `student_id`, that
-> student resolves to "Grace Umutoni" everywhere in the report (which is
-> why she appears twice in TOP PERFORMERS above). This is a good example
-> to point to when discussing the first-occurrence-wins loading rule.
+> Every student in the sample data takes multiple courses per semester
+> (see the CSV's `course_code` column), and each ranking table has one
+> column per course that group's students share, plus a final `Avg`
+> column — the mean across *all* of a student's courses that semester,
+> never a single course's score. So, for example, Alice Uwase's `Avg` of
+> 89.75 in "Year 2, Semester 1" above is the average of her `CSC` (88.5)
+> and `Math` (91.0) scores, not either one alone. Every student in a
+> `(year, semester)` group takes the exact same `course_code`s as their
+> peers in that group (a shared, standardized curriculum per class year),
+> and each `student_id` appears in a semester's ranking exactly once, no
+> matter how many courses they took that semester. Note that `MODULE
+> BREAKDOWN` is unrelated to this per-course breakdown — it groups by each
+> student's own fixed `module` (department), not by course.
 
 ### Sample JSON report (excerpt)
 
 ```json
 {
-  "generated_at": "2026-07-30T10:50:26.561968+00:00",
+  "generated_at": "2026-08-10T14:04:31.166371+00:00",
   "total_students": 8,
-  "total_grade_records": 33,
+  "total_grade_records": 32,
   "overall_statistics": {
-    "mean": 81.82,
-    "median": 84.0,
-    "mode": [82.0, 98.0],
+    "mean": 81.0,
+    "median": 84.75,
+    "mode": [98.0],
     "highest": 99.0,
     "lowest": 55.0
   },
   "grade_distribution": [
-    { "letter_grade": "A", "count": 12, "percentage": 36.36 },
-    { "letter_grade": "B", "count": 8, "percentage": 24.24 }
+    { "letter_grade": "A", "count": 11, "percentage": 34.38 },
+    { "letter_grade": "B", "count": 8, "percentage": 25.0 }
   ],
-  "top_performers": [
-    { "rank": 1, "student_id": "S005", "name": "Elena Ingabire", "major": "Physics", "average_score": 97.0 }
+  "rankings_by_group": [
+    {
+      "year": 1,
+      "semester": "Semester 1",
+      "courses": ["BIO", "Math"],
+      "top_performers": [
+        { "rank": 1, "student_id": "S007", "name": "Grace Umutoni", "module": "BIO", "course_scores": { "Math": 90.0, "BIO": 92.0 }, "average_score": 91.0 },
+        { "rank": 2, "student_id": "S003", "name": "Carla Mukamana", "module": "Math", "course_scores": { "Math": 84.0, "BIO": 80.0 }, "average_score": 82.0 }
+      ],
+      "bottom_performers": [],
+      "full_ranking": [
+        { "rank": 1, "student_id": "S007", "name": "Grace Umutoni", "module": "BIO", "course_scores": { "Math": 90.0, "BIO": 92.0 }, "average_score": 91.0 },
+        { "rank": 2, "student_id": "S003", "name": "Carla Mukamana", "module": "Math", "course_scores": { "Math": 84.0, "BIO": 80.0 }, "average_score": 82.0 }
+      ]
+    }
   ],
-  "full_ranking": [
-    { "rank": 1, "student_id": "S005", "name": "Elena Ingabire", "major": "Physics", "average_score": 97.0 }
-  ],
-  "major_breakdown": [
-    { "major": "Computer Science", "student_count": 2, "average_score": 84.1 }
+  "module_breakdown": [
+    { "module": "Math", "student_count": 2, "average_score": 74.62 }
   ]
 }
 ```
 
+`rankings_by_group` has one entry per (enrollment year, semester) pair
+actually present in the data — students are ranked only against that
+group's peers, never against a different year or semester (see
+[Module-by-module design notes](#module-by-module-design-notes)). Each
+group's `courses` lists the `course_code`s shared by that group, in the
+same order the terminal table renders them as columns; each ranking
+entry's `course_scores` gives that student's score in every one of them.
+
 The full field set is defined by the `AnalyticsReport` `TypedDict` in
-[build_report.py](src/grade_analytics/reporting/build_report.py). `top_performers`
-is `full_ranking` truncated to `--top-n` entries; `full_ranking` always
-contains every student.
+[build_report.py](src/grade_analytics/reporting/build_report.py). Within
+each group, `top_performers` is that group's `full_ranking` truncated to
+the first `--top-n` entries, and `bottom_performers` is the last `--top-n`
+entries (empty once a group has `--top-n` students or fewer, since
+everyone in it is already a top performer — see the example above);
+`full_ranking` always contains every student in the group.
 
 ## Project layout
 
@@ -256,23 +321,32 @@ tests/                          pytest suite, mirroring src/grade_analytics/ 1:1
 
 - **`aggregate_records.py`** — grouping and tallying, each function named
   for exactly what it returns (`group_scores_by_student`,
-  `group_students_by_major`, etc.), so the collection each one builds and
+  `group_students_by_module`, etc.), so the collection each one builds and
   its variable name always match:
   - `Counter` tallies how many records fall into each letter grade.
   - `OrderedDict` re-orders that tally into a fixed A-to-F display order,
     independent of insertion order or counts — needed because `Counter`
     and plain `dict` iteration order would otherwise follow whichever
     grades happened to appear first in the CSV.
-  - `defaultdict(list)` groups students/scores by key (major, year,
+  - `defaultdict(list)` groups students/scores by key (module, year,
     student id, semester) without a `key not in dict` check on every
-    insert.
+    insert. `group_students_by_year_and_semester` and
+    `group_records_by_year_and_semester` key on the combined
+    `(year, semester)` pair, which is what lets `build_report.py` rank
+    students against only their own year-and-semester peers instead of
+    the entire student body. `group_scores_by_student_and_course` builds
+    a `{student_id: {course_code: score}}` mapping — the source of each
+    ranking entry's per-course column.
 - **`calculate_statistics.py`** — mean/median delegate to the `statistics`
   module; mode, percentile rank, and highest/lowest are implemented
   directly (see [The mode calculation](#the-mode-calculation-explicitly)
   for why mode isn't a `statistics.mode()` call).
   `rank_students_by_average` implements **standard competition ranking**:
   students tied on average score share the same rank, and the next
-  distinct rank skips ahead accordingly (1, 2, 2, 4 — not 1, 2, 2, 3).
+  distinct rank skips ahead accordingly (1, 2, 2, 4 — not 1, 2, 2, 3). It
+  operates on whatever `students`/`scores_by_student` it's given, which is
+  what lets `build_report.py` call it once per `(year, semester)` group
+  rather than once across everyone.
 - **`track_rolling_average.py`** — `RollingAverageTracker` wraps a
   `deque(maxlen=window_size)`. This module is **not currently wired into
   the CLI or the report** — it's a standalone, independently tested
@@ -286,12 +360,16 @@ tests/                          pytest suite, mirroring src/grade_analytics/ 1:1
 
 - **`load_students.py`** — reads CSV rows via `csv.DictReader` behind a
   context manager. `load_students_from_csv` returns the *unique* students
-  referenced in the file (first occurrence per `student_id` wins — see the
-  note in [Sample output](#sample-output-stdout) for what happens when two
-  rows disagree). `load_grade_records_from_csv` returns every row as a
-  `GradeRecord`. `stream_grade_records_from_csv` is a generator
-  alternative for files too large to hold fully in memory. `parse_score`
-  validates that every score is numeric and in `[0, 100]`.
+  referenced in the file (first occurrence per `student_id` wins — see
+  [Anticipated review questions](#anticipated-review-questions) for what
+  happens when two rows disagree). `load_grade_records_from_csv` and
+  `stream_grade_records_from_csv` return every row as a `GradeRecord`,
+  routed through `_reject_duplicates`, which raises `InvalidGradeRecordError`
+  if the same student's same `course_code` is recorded twice in the same
+  `semester` — that would silently double-weight one course in the
+  student's average otherwise. `stream_grade_records_from_csv` is a
+  generator alternative for files too large to hold fully in memory.
+  `parse_score` validates that every score is numeric and in `[0, 100]`.
 - **`write_report.py`** — writes the `AnalyticsReport` dict to JSON with
   `json.dump`, creating parent directories as needed.
 
@@ -300,16 +378,33 @@ tests/                          pytest suite, mirroring src/grade_analytics/ 1:1
 - **`build_report.py`** — pure assembly: takes students/records/statistics
   already computed by `analytics/` and shapes them into the
   `AnalyticsReport` `TypedDict` (and its nested `TypedDict`s
-  `GradeDistributionEntry`, `RankingEntry`, `MajorBreakdownEntry`,
-  `SummaryStatistics`). Using `TypedDict` rather than a plain `dict` means
-  `mypy --strict` catches a typo'd or missing report key at type-check
-  time, while the value at runtime is still a plain JSON-serializable
-  `dict` — no custom `to_dict()` step needed before `json.dump`.
+  `GradeDistributionEntry`, `RankingEntry`, `YearSemesterRanking`,
+  `ModuleBreakdownEntry`, `SummaryStatistics`). Using `TypedDict` rather
+  than a plain `dict` means `mypy --strict` catches a typo'd or missing
+  report key at type-check time, while the value at runtime is still a
+  plain JSON-serializable `dict` — no custom `to_dict()` step needed
+  before `json.dump`. `build_rankings_by_group` produces
+  `rankings_by_group`: one `YearSemesterRanking` per `(year, semester)`
+  pair present in the data, each ranked independently on the mean of every
+  course a student took that semester, so a first-year's single-semester
+  average is never compared against a fourth-year's multi-semester one,
+  and one course's score is never compared against a different course's.
+  Each group also carries `courses` — the sorted, distinct `course_code`s
+  shared by everyone in that group — and every `RankingEntry` carries a
+  matching `course_scores` map, so the rendered table can show one column
+  per course instead of a single aggregate figure. Each group's
+  `bottom_performers` is the tail `--top-n` entries of its `full_ranking`
+  (empty once the group has `--top-n` students or fewer).
 - **`render_report.py`** — turns the report into the terminal text seen in
   [Sample output](#sample-output-stdout). `_build_ascii_table` is a small
   generic table renderer (headers + rows → bordered ASCII table) shared by
-  all three report tables, so column-width calculation and border-drawing
-  exist in exactly one place.
+  every report table. `render_ranking_table` builds its header row as
+  `Rank, Name, <one column per course>, Avg` — the course columns are
+  read from the group's `courses` list, so they vary per `(year, semester)`
+  group instead of being fixed. `render_group_rankings_section` renders
+  one "TOP PERFORMERS" table per `(year, semester)` group in
+  `rankings_by_group`, followed by a "BOTTOM PERFORMERS" table for that
+  group whenever it has one.
 
 ### `cli.py`
 
@@ -380,23 +475,34 @@ checks alongside the usual pyflakes/pycodestyle.
 
 ### Coverage
 
-`pytest-cov` runs automatically on every `pytest` invocation (wired in via
-`addopts` in `pyproject.toml`) with **branch coverage** enabled and a
-**100% fail-under gate** — `pytest` itself fails if any statement or
-branch in `src/grade_analytics/` isn't exercised by the test suite:
+Plain `pytest` — from anywhere, on any file or subset — just runs tests
+and stays short:
 
 ```bash
-pytest   # runs with --cov=grade_analytics --cov-report=term-missing --cov-fail-under=100
+pytest                                       # fast, no coverage table, run from anywhere
+pytest --cov=grade_analytics --cov-report=term-missing --cov-fail-under=100
+                                              # the full, gated check — run from the repo root before committing
 ```
 
-This prints a per-file coverage table with a `Missing` column naming any
+Coverage is entirely opt-in, on purpose: `addopts` in `pyproject.toml`
+carries no `--cov*` flags, so day-to-day test runs never print the
+per-file table. The second command above is the one that matters for
+enforcement — it fails unless every statement and branch in
+`src/grade_analytics/` is covered by whatever ran, so it should be run
+covering the *whole* suite (no path argument) from the repo root:
+
+```bash
+pytest --cov=grade_analytics --cov-report=term-missing --cov-fail-under=100
+```
+
+That prints a per-file coverage table with a `Missing` column naming any
 uncovered line the moment a change under-tests something, rather than
 letting a gap go unnoticed. The `[tool.coverage.report]` `exclude_lines`
 setting excludes only the `if __name__ == "__main__":` script guard (which
 runs only when the file is executed directly, never on import) — every
 other line, including error branches (`PermissionError`, `ValueError` on
 empty input, invalid CSV rows) and edge cases (an all-unique-scores
-dataset with no mode, a major with no recorded scores) is exercised by an
+dataset with no mode, a module with no recorded scores) is exercised by an
 explicit test rather than excluded.
 
 Getting there took two small testability changes worth knowing about:
@@ -461,20 +567,26 @@ Zero extra runtime dependencies, and the table logic is small enough
 of code for a new dependency to keep in sync with `mypy --strict`.
 
 **Why does the CSV loader keep the *first* occurrence of a student's
-name/major/year and ignore later ones instead of raising an error on a
+name/module/year and ignore later ones instead of raising an error on a
 mismatch?**
 It's a deliberate simplicity trade-off: validating that every row for a
 `student_id` agrees on identity fields would need a second pass (or
 buffering) and a new exception type, for a condition that a well-formed
-export shouldn't produce. The bundled sample data's `S008` row (see
-[Sample output](#sample-output-stdout)) exists specifically to make this
-behavior visible and discussable rather than hiding it.
+export shouldn't produce. The bundled sample data no longer contains a
+row that exercises this (every student's identity is consistent across
+their rows), but the rule is still implemented and worth knowing about if
+a real export has a typo on a later row for the same student.
 
 **Is there input validation on the CSV beyond the score range?**
 `parse_score` validates score type and range (`0-100`). `year` is parsed
-with `int()` and raises `InvalidGradeRecordError` on failure. Text fields
-(`name`, `major`, `course_code`, `semester`) are taken as-is — there's no
-whitelist of valid majors or course codes, since that's configuration the
+with `int()` and raises `InvalidGradeRecordError` on failure. The loader
+also rejects a duplicate `(student_id, semester, course_code)` combination
+(see the `load_students.py` note under
+[Module-by-module design notes](#module-by-module-design-notes)) so the
+same course can't be counted twice in one student's semester average.
+Text fields (`name`, `module`,
+`course_code`, `semester`) are otherwise taken as-is — there's no
+whitelist of valid modules or course codes, since that's configuration the
 tool doesn't own.
 
 **Why was chart/PNG generation removed?**
