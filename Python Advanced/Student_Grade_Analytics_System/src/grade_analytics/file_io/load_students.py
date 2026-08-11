@@ -1,4 +1,4 @@
-"""Load student and grade-record data out of CSV files."""
+"""Load student and grade-record data out of CSV files (read access only)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ from grade_analytics.models.exceptions import (
 )
 
 ScoreInput = Union[str, float, int]  # noqa: UP007 -- explicit Union per assessment requirements
+
+# Default location of the input CSV this module reads.
+csv_file_path = Path("data/sample_students.csv")
 
 
 def parse_score(value: ScoreInput) -> float:
@@ -53,6 +56,7 @@ def _row_to_student(row: dict[str, str]) -> Student:
 
 
 def _open_csv_rows(path: Path | str) -> Iterator[dict[str, str]]:
+    """Open ``path`` for reading (read access) and yield each row as a ``dict``."""
     csv_path = Path(path)
     try:
         with open(csv_path, newline="", encoding="utf-8") as csv_file:
@@ -77,17 +81,17 @@ def _reject_duplicates(records: Iterator[GradeRecord]) -> Iterator[GradeRecord]:
         yield record
 
 
-def load_grade_records_from_csv(path: Path | str) -> list[GradeRecord]:
+def load_grade_records_from_csv(path: Path | str = csv_file_path) -> list[GradeRecord]:
     """Read every grade record from the CSV file at ``path`` into a list."""
     return list(_reject_duplicates(_row_to_grade_record(row) for row in _open_csv_rows(path)))
 
 
-def stream_grade_records_from_csv(path: Path | str) -> Iterator[GradeRecord]:
-    """Lazily yield grade records from ``path`` one row at a time."""
+def stream_grade_records_from_csv(path: Path | str = csv_file_path) -> Iterator[GradeRecord]:
+    """Read grade records from the CSV file at ``path`` one row at a time (read access)."""
     yield from _reject_duplicates(_row_to_grade_record(row) for row in _open_csv_rows(path))
 
 
-def load_students_from_csv(path: Path | str) -> list[Student]:
+def load_students_from_csv(path: Path | str = csv_file_path) -> list[Student]:
     """Read the unique students referenced in the CSV file at ``path``.
 
     Order of first appearance is preserved.
