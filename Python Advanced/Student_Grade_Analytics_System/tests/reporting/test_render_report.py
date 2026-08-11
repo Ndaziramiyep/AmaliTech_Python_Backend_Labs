@@ -10,7 +10,8 @@ from grade_analytics.reporting.render_report import (
     print_analytics_report,
     render_analytics_report,
     render_grade_distribution_table,
-    render_major_breakdown_table,
+    render_group_rankings_section,
+    render_module_breakdown_table,
     render_ranking_table,
     render_summary_section,
 )
@@ -85,24 +86,94 @@ def test_render_ranking_table_lists_every_entry(
 ) -> None:
     """Every ranking entry appears in its own row, in order."""
     report = build_analytics_report(sample_students, sample_grade_records)
+    group = report["rankings_by_group"][0]
+    full_ranking = group["full_ranking"]
 
-    table = render_ranking_table(report["full_ranking"], "FULL RANKING")
+    table = render_ranking_table(full_ranking, group["courses"], "FULL RANKING")
 
     assert table.startswith("FULL RANKING")
-    for entry in report["full_ranking"]:
+    for entry in full_ranking:
         assert entry["name"] in table
 
 
-def test_render_major_breakdown_table_lists_every_major(
+def test_render_ranking_table_has_one_column_per_course() -> None:
+    """The rendered table has a header and a score column for each shared course."""
+    students = [
+        Student(student_id="S001", name="Alice", module="CSC", year=2),
+        Student(student_id="S002", name="Bob", module="Math", year=2),
+    ]
+    records = [
+        GradeRecord(student_id="S001", course_code="CSC", semester="Semester 1", score=88.5),
+        GradeRecord(student_id="S001", course_code="Math", semester="Semester 1", score=91.0),
+        GradeRecord(student_id="S002", course_code="CSC", semester="Semester 1", score=59.5),
+        GradeRecord(student_id="S002", course_code="Math", semester="Semester 1", score=63.0),
+    ]
+    group = build_analytics_report(students, records)["rankings_by_group"][0]
+
+    table = render_ranking_table(group["full_ranking"], group["courses"], "TOP PERFORMERS")
+
+    header_line = table.splitlines()[2]
+    assert "CSC" in header_line
+    assert "Math" in header_line
+    assert "Avg" in header_line
+    assert "88.5" in table
+    assert "91.0" in table
+
+
+def test_render_group_rankings_section_lists_every_group(
     sample_students: list[Student], sample_grade_records: list[GradeRecord]
 ) -> None:
-    """Every major appears in the breakdown table."""
+    """Every (year, semester) group gets its own heading and ranking table."""
     report = build_analytics_report(sample_students, sample_grade_records)
 
-    table = render_major_breakdown_table(report)
+    section = render_group_rankings_section(report)
 
-    for entry in report["major_breakdown"]:
-        assert entry["major"] in table
+    for group in report["rankings_by_group"]:
+        assert f"Year {group['year']}, {group['semester']}" in section
+        assert group["top_performers"][0]["name"] in section
+
+
+def test_render_group_rankings_section_includes_bottom_performers_when_present() -> None:
+    """A group larger than top_n also gets its own BOTTOM PERFORMERS table."""
+    students = [
+        Student(student_id="S001", name="Alice", module="CS", year=1),
+        Student(student_id="S002", name="Bob", module="CS", year=1),
+        Student(student_id="S003", name="Cara", module="CS", year=1),
+    ]
+    records = [
+        GradeRecord(student_id="S001", course_code="CS101", semester="Semester 1", score=95.0),
+        GradeRecord(student_id="S002", course_code="CS101", semester="Semester 1", score=85.0),
+        GradeRecord(student_id="S003", course_code="CS101", semester="Semester 1", score=75.0),
+    ]
+    report = build_analytics_report(students, records, top_n=1)
+
+    section = render_group_rankings_section(report)
+
+    assert "BOTTOM PERFORMERS - Year 1, Semester 1" in section
+    assert "Cara" in section
+
+
+def test_render_group_rankings_section_omits_bottom_performers_when_group_is_small(
+    sample_students: list[Student], sample_grade_records: list[GradeRecord]
+) -> None:
+    """A group no larger than top_n has no separate 'lasts' — everyone's already a top performer."""
+    report = build_analytics_report(sample_students, sample_grade_records)
+
+    section = render_group_rankings_section(report)
+
+    assert "BOTTOM PERFORMERS" not in section
+
+
+def test_render_module_breakdown_table_lists_every_module(
+    sample_students: list[Student], sample_grade_records: list[GradeRecord]
+) -> None:
+    """Every module appears in the breakdown table."""
+    report = build_analytics_report(sample_students, sample_grade_records)
+
+    table = render_module_breakdown_table(report)
+
+    for entry in report["module_breakdown"]:
+        assert entry["module"] in table
 
 
 def test_render_analytics_report_includes_every_section(
@@ -117,7 +188,7 @@ def test_render_analytics_report_includes_every_section(
     assert "SUMMARY" in full_report
     assert "GRADE DISTRIBUTION" in full_report
     assert "TOP PERFORMERS" in full_report
-    assert "MAJOR BREAKDOWN" in full_report
+    assert "MODULE BREAKDOWN" in full_report
 
 
 def test_print_analytics_report_writes_to_stdout(

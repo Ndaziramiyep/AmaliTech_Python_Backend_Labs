@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from grade_analytics.reporting.build_report import AnalyticsReport, RankingEntry
+from grade_analytics.reporting.build_report import (
+    AnalyticsReport,
+    RankingEntry,
+    YearSemesterRanking,
+)
 
 _BANNER_WIDTH = 78
 _BAR_WIDTH = 24
@@ -77,14 +81,16 @@ def render_grade_distribution_table(report: AnalyticsReport) -> str:
     return "GRADE DISTRIBUTION\n" + _build_ascii_table(table_headers, table_rows)
 
 
-def render_ranking_table(ranking_entries: list[RankingEntry], heading: str) -> str:
-    """Render a list of ranking entries as a table under ``heading``."""
-    table_headers = ["Rank", "Name", "Major", "Average Score"]
+def render_ranking_table(
+    ranking_entries: list[RankingEntry], courses: list[str], heading: str
+) -> str:
+    """Render ranking entries as a table under ``heading``, one column per course in ``courses``."""
+    table_headers = ["Rank", "Name", *courses, "Avg"]
     table_rows = [
         [
             str(ranking_entry["rank"]),
             ranking_entry["name"],
-            ranking_entry["major"],
+            *[str(ranking_entry["course_scores"][course]) for course in courses],
             str(ranking_entry["average_score"]),
         ]
         for ranking_entry in ranking_entries
@@ -92,18 +98,41 @@ def render_ranking_table(ranking_entries: list[RankingEntry], heading: str) -> s
     return f"{heading}\n" + _build_ascii_table(table_headers, table_rows)
 
 
-def render_major_breakdown_table(report: AnalyticsReport) -> str:
-    """Render the per-major aggregate performance as a table."""
-    table_headers = ["Major", "Student Count", "Average Score"]
+def render_group_rankings_section(report: AnalyticsReport) -> str:
+    """Render each (enrollment year, semester) group's top and bottom performers."""
+
+    def _suffix(group: YearSemesterRanking) -> str:
+        return f"Year {group['year']}, {group['semester']}"
+
+    tables = []
+    for group in report["rankings_by_group"]:
+        courses = group["courses"]
+        tables.append(
+            render_ranking_table(
+                group["top_performers"], courses, f"TOP PERFORMERS - {_suffix(group)}"
+            )
+        )
+        if group["bottom_performers"]:
+            tables.append(
+                render_ranking_table(
+                    group["bottom_performers"], courses, f"BOTTOM PERFORMERS - {_suffix(group)}"
+                )
+            )
+    return "\n\n".join(tables)
+
+
+def render_module_breakdown_table(report: AnalyticsReport) -> str:
+    """Render the per-module aggregate performance as a table."""
+    table_headers = ["Module", "Student Count", "Average Score"]
     table_rows = [
         [
-            breakdown_entry["major"],
+            breakdown_entry["module"],
             str(breakdown_entry["student_count"]),
             str(breakdown_entry["average_score"]),
         ]
-        for breakdown_entry in report["major_breakdown"]
+        for breakdown_entry in report["module_breakdown"]
     ]
-    return "MAJOR BREAKDOWN\n" + _build_ascii_table(table_headers, table_rows)
+    return "MODULE BREAKDOWN\n" + _build_ascii_table(table_headers, table_rows)
 
 
 def render_analytics_report(report: AnalyticsReport) -> str:
@@ -119,9 +148,9 @@ def render_analytics_report(report: AnalyticsReport) -> str:
         "",
         render_grade_distribution_table(report),
         "",
-        render_ranking_table(report["top_performers"], "TOP PERFORMERS"),
+        render_group_rankings_section(report),
         "",
-        render_major_breakdown_table(report),
+        render_module_breakdown_table(report),
     ]
     return "\n".join(report_sections)
 

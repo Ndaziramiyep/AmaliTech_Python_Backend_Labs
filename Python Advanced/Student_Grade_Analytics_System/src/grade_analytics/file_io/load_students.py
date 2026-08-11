@@ -45,7 +45,7 @@ def _row_to_student(row: dict[str, str]) -> Student:
         return Student(
             student_id=row["student_id"],
             name=row["name"],
-            major=row["major"],
+            module=row["module"],
             year=int(row["year"]),
         )
     except (KeyError, ValueError) as exc:
@@ -63,15 +63,28 @@ def _open_csv_rows(path: Path | str) -> Iterator[dict[str, str]]:
         raise StudentDataFilePermissionError(f"Cannot read CSV file: {csv_path}") from exc
 
 
+def _reject_duplicates(records: Iterator[GradeRecord]) -> Iterator[GradeRecord]:
+    """Raise if the same student's same course is recorded twice in one semester."""
+    seen: set[tuple[str, str, str]] = set()
+    for record in records:
+        key = (record.student_id, record.semester, record.course_code)
+        if key in seen:
+            raise InvalidGradeRecordError(
+                f"Student {record.student_id!r} already has a {record.semester!r} score "
+                f"for course {record.course_code!r}"
+            )
+        seen.add(key)
+        yield record
+
+
 def load_grade_records_from_csv(path: Path | str) -> list[GradeRecord]:
     """Read every grade record from the CSV file at ``path`` into a list."""
-    return [_row_to_grade_record(row) for row in _open_csv_rows(path)]
+    return list(_reject_duplicates(_row_to_grade_record(row) for row in _open_csv_rows(path)))
 
 
 def stream_grade_records_from_csv(path: Path | str) -> Iterator[GradeRecord]:
     """Lazily yield grade records from ``path`` one row at a time."""
-    for row in _open_csv_rows(path):
-        yield _row_to_grade_record(row)
+    yield from _reject_duplicates(_row_to_grade_record(row) for row in _open_csv_rows(path))
 
 
 def load_students_from_csv(path: Path | str) -> list[Student]:
