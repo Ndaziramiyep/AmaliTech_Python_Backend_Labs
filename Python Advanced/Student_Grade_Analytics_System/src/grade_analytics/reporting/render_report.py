@@ -1,4 +1,4 @@
-"""Render the analytics report as a terminal report with tables and a bar chart."""
+"""Render the analytics report (as read from ``grade_report.json``) as tables and a bar chart."""
 
 from __future__ import annotations
 
