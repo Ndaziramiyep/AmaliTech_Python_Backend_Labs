@@ -8,10 +8,8 @@ from typing import Any
 import mongomock
 from pymongo.database import Database
 
-from social_platform.models.entities import ActivityEvent, ActivityEventType
-from social_platform.repositories.mongo_activity_log_repository import (
-    MongoActivityLogRepository,
-)
+from social_platform.features.activity_log.model import ActivityEvent, ActivityEventType
+from social_platform.features.activity_log.repository import MongoActivityLogRepository
 
 
 def test_record_activity_event_inserts_one_document_with_every_field(

@@ -1,4 +1,4 @@
-"""Unit tests for PostEngagementService."""
+"""Unit tests for EngagementService.like_post."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from datetime import datetime
 
 import pytest
 
-from social_platform.models.entities import Post
-from social_platform.models.exceptions import PostNotFoundError
-from social_platform.services.post_engagement_service import PostEngagementService
+from social_platform.common.exceptions import PostNotFoundError
+from social_platform.features.engagement.service import EngagementService
+from social_platform.features.posts.model import Post
 from tests.unit.services._fakes import FakeActivityLogRepository, FakePostRepository
 
 
@@ -17,7 +17,7 @@ def test_like_post_rejects_a_nonexistent_post(
     fake_activity_log_repository: FakeActivityLogRepository,
 ) -> None:
     """Liking a post that does not exist raises PostNotFoundError, not a silent no-op."""
-    service = PostEngagementService(fake_post_repository, fake_activity_log_repository)
+    service = EngagementService(fake_post_repository, fake_activity_log_repository)
 
     with pytest.raises(PostNotFoundError):
         service.like_post(1, 999)
@@ -30,7 +30,7 @@ def test_like_post_records_a_post_liked_activity_event(
 ) -> None:
     """Liking an existing post records exactly one post_liked activity event."""
     fake_post_repository.posts_by_id[10] = Post(10, 2, "hello", {}, datetime.now())
-    service = PostEngagementService(fake_post_repository, fake_activity_log_repository)
+    service = EngagementService(fake_post_repository, fake_activity_log_repository)
 
     service.like_post(1, 10)
 

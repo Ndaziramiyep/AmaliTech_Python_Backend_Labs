@@ -15,12 +15,12 @@ import pytest
 import redis
 from pymongo.database import Database
 
-from social_platform.config.application_settings import ApplicationSettings
-from social_platform.database.mongo_connection_factory import create_mongo_database
-from social_platform.database.postgres_connection_pool import PostgresConnectionPool
-from social_platform.database.redis_connection_factory import create_redis_client
-from social_platform.models.entities import User
-from social_platform.repositories.postgres_user_repository import PostgresUserRepository
+from social_platform.common.mongo_client import create_mongo_database
+from social_platform.common.postgres_pool import PostgresConnectionPool
+from social_platform.common.redis_client import create_redis_client
+from social_platform.common.settings import ApplicationSettings
+from social_platform.features.users.model import User
+from social_platform.features.users.repository import PostgresUserRepository
 
 _settings = ApplicationSettings.from_environment()
 

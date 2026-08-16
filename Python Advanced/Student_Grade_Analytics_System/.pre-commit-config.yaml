@@ -1,0 +1,57 @@
+# pre-commit is invoked from the repo root (AmaliTech_Python_Backend_Labs),
+# but this config only lints/formats this one subproject. Hooks are scoped
+# with `files:` and call this project's own .venv tools, matching the exact
+# versions pinned in requirements.txt. The leading "./" on each path is
+# required on Windows: a bare forward-slash relative exe path (no leading
+# "./") is not resolved by CreateProcess and fails with WinError 2.
+#
+# pass_filenames: false + explicit src/tests args means each hook runs once
+# for the whole subproject, instead of pre-commit batching the file list
+# into several separate sub-process invocations.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^Python Advanced/Student_Grade_Analytics_System/
+      - id: end-of-file-fixer
+        files: ^Python Advanced/Student_Grade_Analytics_System/
+      - id: check-yaml
+        files: ^Python Advanced/Student_Grade_Analytics_System/
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (Student_Grade_Analytics_System)
+        entry: '"./Python Advanced/Student_Grade_Analytics_System/.venv/Scripts/python.exe" -m ruff check --fix'
+        args:
+          - "./Python Advanced/Student_Grade_Analytics_System/src"
+          - "./Python Advanced/Student_Grade_Analytics_System/tests"
+        language: system
+        types: [python]
+        files: ^Python Advanced/Student_Grade_Analytics_System/
+        pass_filenames: false
+
+      - id: black
+        name: black (Student_Grade_Analytics_System)
+        entry: '"./Python Advanced/Student_Grade_Analytics_System/.venv/Scripts/python.exe" -m black'
+        args:
+          - "./Python Advanced/Student_Grade_Analytics_System/src"
+          - "./Python Advanced/Student_Grade_Analytics_System/tests"
+        language: system
+        types: [python]
+        files: ^Python Advanced/Student_Grade_Analytics_System/
+        pass_filenames: false
+
+      - id: mypy
+        name: mypy (Student_Grade_Analytics_System)
+        entry: '"./Python Advanced/Student_Grade_Analytics_System/.venv/Scripts/python.exe" -m mypy'
+        args:
+          - "--config-file"
+          - "./Python Advanced/Student_Grade_Analytics_System/pyproject.toml"
+          - "./Python Advanced/Student_Grade_Analytics_System/src"
+        language: system
+        types: [python]
+        files: ^Python Advanced/Student_Grade_Analytics_System/
+        pass_filenames: false

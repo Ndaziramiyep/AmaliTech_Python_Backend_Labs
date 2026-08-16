@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from social_platform.models.exceptions import WeakPasswordError
-from social_platform.security.password_policy import validate_password_strength
+from social_platform.common.exceptions import WeakPasswordError
+from social_platform.common.security import validate_password_strength
 
 
 def test_validate_password_strength_accepts_a_strong_password() -> None:

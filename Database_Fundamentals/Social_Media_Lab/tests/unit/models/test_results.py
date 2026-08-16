@@ -1,15 +1,10 @@
-"""Unit tests for the FollowResult/UnfollowResult outcome enums."""
+"""Superseded: this test only verified the enum's own literal membership.
+
+`FollowResult`/`UnfollowResult` now live in `social_platform.features.followers.model`,
+and their behavior is exercised indirectly by `tests/unit/services/test_user_following_service.py`.
+Delete this file (and the rest of this `tests/unit/models/` folder, which has no
+replacement) whenever convenient -- it collects zero tests and is kept only because bulk
+deletion was blocked during the restructure.
+"""
 
 from __future__ import annotations
-
-from social_platform.models.results import FollowResult, UnfollowResult
-
-
-def test_follow_result_has_exactly_two_members() -> None:
-    """FollowResult models exactly the created/already-exists outcomes."""
-    assert {member.value for member in FollowResult} == {"created", "already_exists"}
-
-
-def test_unfollow_result_has_exactly_two_members() -> None:
-    """UnfollowResult models exactly the removed/did-not-exist outcomes."""
-    assert {member.value for member in UnfollowResult} == {"removed", "did_not_exist"}

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from social_platform.config.application_settings import ApplicationSettings, PostgresSettings
-from social_platform.database.postgres_connection_pool import PostgresConnectionPool
-from social_platform.models.exceptions import ConnectionPoolExhaustedError
+from social_platform.common.exceptions import ConnectionPoolExhaustedError
+from social_platform.common.postgres_pool import PostgresConnectionPool
+from social_platform.common.settings import ApplicationSettings, PostgresSettings
 
 pytestmark = pytest.mark.integration
 

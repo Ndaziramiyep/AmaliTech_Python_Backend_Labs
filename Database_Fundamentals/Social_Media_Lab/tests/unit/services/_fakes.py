@@ -1,31 +1,24 @@
-"""Hand-written fakes of the repository interfaces, used to unit test services without I/O."""
+"""Hand-written fakes of each feature's repository contract, for testing services without I/O.
+
+Since every contract is a `typing.Protocol` (structural typing), these fakes don't need to
+inherit from anything -- matching the shape is enough to satisfy the type checker.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from social_platform.models.entities import (
-    ActivityEvent,
-    Comment,
-    FeedPostEntry,
-    Post,
-    PostMetadata,
-    TrendingPostEntry,
-    User,
-)
-from social_platform.models.results import FollowResult, UnfollowResult
-from social_platform.repositories.interfaces import (
-    ActivityLogRepositoryInterface,
-    CommentRepositoryInterface,
-    FollowerRepositoryInterface,
-    PostRepositoryInterface,
-    TimelineCacheRepositoryInterface,
-    UserRepositoryInterface,
-)
+from social_platform.features.activity_log.model import ActivityEvent
+from social_platform.features.comments.model import Comment
+from social_platform.features.feed.model import FeedPostEntry
+from social_platform.features.followers.model import FollowResult, UnfollowResult
+from social_platform.features.posts.model import Post, PostMetadata
+from social_platform.features.trending.model import TrendingPostEntry
+from social_platform.features.users.model import User
 
 
-class FakeUserRepository(UserRepositoryInterface):
-    """An in-memory stand-in for `UserRepositoryInterface`."""
+class FakeUserRepository:
+    """An in-memory stand-in for `UserRepository`."""
 
     def __init__(self) -> None:
         self.users_by_id: dict[int, User] = {}
@@ -39,9 +32,6 @@ class FakeUserRepository(UserRepositoryInterface):
         self.next_user_id += 1
         return user
 
-    def find_user_by_id(self, user_id: int) -> User | None:
-        return self.users_by_id.get(user_id)
-
     def find_user_and_password_hash_by_username(self, username: str) -> tuple[User, str] | None:
         password_hash = self.password_hashes_by_username.get(username)
         if password_hash is None:
@@ -50,15 +40,12 @@ class FakeUserRepository(UserRepositoryInterface):
         return user, password_hash
 
 
-class FakePostRepository(PostRepositoryInterface):
-    """An in-memory stand-in for `PostRepositoryInterface`."""
+class FakePostRepository:
+    """An in-memory stand-in for `PostRepository`."""
 
     def __init__(self) -> None:
         self.posts_by_id: dict[int, Post] = {}
         self.next_post_id = 1
-        self.feed_page_calls: list[tuple[int, int, int]] = []
-        self.feed_page_to_return: list[FeedPostEntry] = []
-        self.trending_posts_to_return: list[TrendingPostEntry] = []
 
     def create_post(self, author_user_id: int, content: str, metadata: PostMetadata) -> Post:
         post = Post(self.next_post_id, author_user_id, content, metadata, datetime.now())
@@ -69,18 +56,9 @@ class FakePostRepository(PostRepositoryInterface):
     def find_post_by_id(self, post_id: int) -> Post | None:
         return self.posts_by_id.get(post_id)
 
-    def fetch_timeline_feed_page(
-        self, follower_user_id: int, first_row: int, last_row: int
-    ) -> list[FeedPostEntry]:
-        self.feed_page_calls.append((follower_user_id, first_row, last_row))
-        return self.feed_page_to_return
 
-    def fetch_trending_posts(self, since: datetime, result_limit: int) -> list[TrendingPostEntry]:
-        return self.trending_posts_to_return
-
-
-class FakeCommentRepository(CommentRepositoryInterface):
-    """An in-memory stand-in for `CommentRepositoryInterface`."""
+class FakeCommentRepository:
+    """An in-memory stand-in for `CommentRepository`."""
 
     def __init__(self) -> None:
         self.next_comment_id = 1
@@ -91,8 +69,8 @@ class FakeCommentRepository(CommentRepositoryInterface):
         return comment
 
 
-class FakeFollowerRepository(FollowerRepositoryInterface):
-    """An in-memory stand-in for `FollowerRepositoryInterface`."""
+class FakeFollowerRepository:
+    """An in-memory stand-in for `FollowerRepository`."""
 
     def __init__(self) -> None:
         self.follow_result_to_return = FollowResult.CREATED
@@ -113,8 +91,32 @@ class FakeFollowerRepository(FollowerRepositoryInterface):
         return self.unfollow_result_to_return
 
 
-class FakeTimelineCacheRepository(TimelineCacheRepositoryInterface):
-    """An in-memory stand-in for `TimelineCacheRepositoryInterface`."""
+class FakeFeedRepository:
+    """An in-memory stand-in for `FeedRepository`."""
+
+    def __init__(self) -> None:
+        self.feed_page_calls: list[tuple[int, int, int]] = []
+        self.feed_page_to_return: list[FeedPostEntry] = []
+
+    def fetch_feed_page(
+        self, follower_user_id: int, first_row: int, last_row: int
+    ) -> list[FeedPostEntry]:
+        self.feed_page_calls.append((follower_user_id, first_row, last_row))
+        return self.feed_page_to_return
+
+
+class FakeTrendingRepository:
+    """An in-memory stand-in for `TrendingRepository`."""
+
+    def __init__(self) -> None:
+        self.trending_posts_to_return: list[TrendingPostEntry] = []
+
+    def fetch_trending_posts(self, since: datetime, result_limit: int) -> list[TrendingPostEntry]:
+        return self.trending_posts_to_return
+
+
+class FakeTimelineCache:
+    """An in-memory stand-in for `TimelineCache`."""
 
     def __init__(self) -> None:
         self.cached_pages: dict[tuple[int, int], list[FeedPostEntry]] = {}
@@ -130,8 +132,8 @@ class FakeTimelineCacheRepository(TimelineCacheRepositoryInterface):
         self.cached_pages[(follower_user_id, page_number)] = feed_page
 
 
-class FakeActivityLogRepository(ActivityLogRepositoryInterface):
-    """An in-memory stand-in for `ActivityLogRepositoryInterface`."""
+class FakeActivityLogRepository:
+    """An in-memory stand-in for `ActivityLogRepository`."""
 
     def __init__(self, raise_on_record: Exception | None = None) -> None:
         self.recorded_events: list[ActivityEvent] = []

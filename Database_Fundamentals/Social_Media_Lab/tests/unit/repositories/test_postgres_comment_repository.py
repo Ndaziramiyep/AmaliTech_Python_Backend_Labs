@@ -9,10 +9,8 @@ from unittest.mock import MagicMock
 import psycopg2.errors
 import pytest
 
-from social_platform.models.exceptions import PostNotFoundError, UserNotFoundError
-from social_platform.repositories.postgres_comment_repository import (
-    PostgresCommentRepository,
-)
+from social_platform.common.exceptions import PostNotFoundError, UserNotFoundError
+from social_platform.features.comments.repository import PostgresCommentRepository
 
 
 class _ConstraintNamedViolation(psycopg2.errors.ForeignKeyViolation):

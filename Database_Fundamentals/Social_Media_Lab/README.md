@@ -16,13 +16,13 @@ It supports the core actions you'd expect from any social app:
 
 | Action | What happens behind the scenes |
 | --- | --- |
-| 📝 **Register / log in** | Your password is never stored in plain text — only a salted, scrambled ("hashed") version. |
-| 📣 **Create a post** | Saved permanently with your name attached and a timestamp. |
-| ➕ **Follow / unfollow someone** | Recorded as an all-or-nothing operation — it either fully succeeds or fully fails, never half-happens. |
-| 💬 **Comment on a post** | Linked back to both the post and the commenter. |
-| ❤️ **Like a post** | Logged as an activity event. |
-| 📰 **View your feed** | A fast, paginated list of posts from everyone you follow, newest first. |
-| 🔥 **View trending posts** | Posts ranked by how much recent discussion (comments) they're getting. |
+|   **Register / log in** | Your password is never stored in plain text — only a salted, scrambled ("hashed") version. |
+|   **Create a post** | Saved permanently with your name attached and a timestamp. |
+|   **Follow / unfollow someone** | Recorded as an all-or-nothing operation — it either fully succeeds or fully fails, never half-happens. |
+|   **Comment on a post** | Linked back to both the post and the commenter. |
+|   **Like a post** | Logged as an activity event. |
+|   **View your feed** | A fast, paginated list of posts from everyone you follow, newest first. |
+|   **View trending posts** | Posts ranked by how much recent discussion (comments) they're getting. |
 
 Under the hood, it uses three specialized databases together, each doing the job it's best at:
 
@@ -33,13 +33,29 @@ Under the hood, it uses three specialized databases together, each doing the job
 - **MongoDB** — a flexible activity log that records "who did what, when" (follows, likes,
   posts, comments) for later analysis, without needing rigid table columns.
 
+## Tech stack
+
+| Layer | Choice |
+| --- | --- |
+| Language | Python 3.11+, `src/` layout, packaged as `social-platform-backend` |
+| Relational store | PostgreSQL 16 via `psycopg2-binary`, pooled with `psycopg2.pool.ThreadedConnectionPool` |
+| Cache | Redis 7 via `redis-py` |
+| Document store | MongoDB via `pymongo` |
+| Config | `python-dotenv` — every setting has a safe default, nothing required to run locally |
+| Testing | `pytest` + `pytest-cov`, `fakeredis` and `mongomock` for unit tests, real docker-compose services for integration tests |
+| Static analysis | `mypy --strict`, `ruff`, `black` |
+
+No web framework — this is a pure CLI/library backend with no HTTP layer, which keeps the
+lab's focus on data modeling and query correctness rather than request handling.
+
 ## Try it yourself (no coding required)
 
 Once it's [set up](#setup), the easiest way to explore the app is the interactive menu — just
 run it and answer the prompts, the same way you'd use any text-based menu:
 
 ```bash
-python main.py
+python main.py                      # local Python (Option B)
+docker compose run --rm app         # fully dockerized, no local Python needed (Option A)
 ```
 
 ```text
@@ -54,10 +70,12 @@ like posts, and view your feed — no command-line arguments to memorize.
 ## Contents
 
 - [What is this, in plain terms?](#what-is-this-in-plain-terms)
+- [Tech stack](#tech-stack)
 - [Try it yourself](#try-it-yourself-no-coding-required)
 - [Setup](#setup)
 - [Usage](#usage)
 - [Project layout](#project-layout)
+- [Data model](#data-model)
 - [Architecture](#architecture)
 - [The transactional follow/unfollow contract](#the-transactional-followunfollow-contract)
 - [Feed query performance](#feed-query-performance)
@@ -65,13 +83,41 @@ like posts, and view your feed — no command-line arguments to memorize.
 - [Error handling](#error-handling)
 - [Scope decisions](#scope-decisions)
 - [Testing, formatting, and type-checking](#testing-formatting-and-type-checking)
+- [Interview prep: likely questions](#interview-prep-likely-questions)
 
 ## Setup
 
-You'll need [Python 3.11+](https://www.python.org/downloads/) and
-[Docker](https://www.docker.com/products/docker-desktop/) installed. Docker runs the three
-databases (PostgreSQL, Redis, MongoDB) for you in the background — you don't need to install
-any of them yourself.
+There are two ways to run this: fully inside Docker (nothing but Docker needed on your
+machine), or locally with Docker only providing the databases. Both use the same
+[`docker-compose.yml`](docker-compose.yml) and [`sql/schema.sql`](sql/schema.sql).
+
+### Option A — fully dockerized (no local Python install needed)
+
+You only need [Docker](https://www.docker.com/products/docker-desktop/).
+
+```bash
+docker compose up -d                # starts PostgreSQL, Redis, and MongoDB
+docker compose run --rm app         # builds the app image (first run) and opens the menu
+```
+
+Every scriptable command works the same way, substituting `python main.py ...` for
+`docker compose run --rm app python main.py ...`:
+
+```bash
+docker compose run --rm app python main.py register-user <username> <email> <password> "<display name>"
+```
+
+The `app` service ([`Dockerfile`](Dockerfile)) is *not* started by plain `docker compose up` —
+it has no server loop, so with no terminal attached it would just exit immediately. It's
+defined with `profiles: ["cli"]` specifically so the database-only default stays unchanged;
+`docker compose run --rm app [...]` is how you actually use it, and allocates a real TTY so
+the interactive menu's prompts work correctly. Inside the `app` container, `POSTGRES_HOST`,
+`REDIS_HOST`, and `MONGO_URI` are already pointed at the other containers by service name
+(`postgres`, `redis`, `mongo`) — no `.env` file needed for this path.
+
+### Option B — local Python, dockerized databases only
+
+You'll need [Python 3.11+](https://www.python.org/downloads/) and Docker.
 
 ```bash
 python -m venv .venv
@@ -82,19 +128,24 @@ pip install -r requirements.txt
 pip install -e .
 
 copy .env.example .env        # cp .env.example .env on macOS/Linux
-docker-compose up -d          # starts PostgreSQL, Redis, and MongoDB
+docker compose up -d          # starts PostgreSQL, Redis, and MongoDB (only — not the app)
 ```
 
-`docker-compose up -d` also creates all the database tables automatically the first time it
-runs, using [`sql/schema.sql`](sql/schema.sql). If you ever need to (re)apply that schema to an
-already-running database by hand:
+Either way, `docker compose up -d` also creates all the database tables automatically the
+first time it runs, using [`sql/schema.sql`](sql/schema.sql). If you ever need to (re)apply
+that schema to an already-running database by hand:
 
 ```bash
 psql -h localhost -U social_platform -d social_platform -f sql/schema.sql
 ```
 
-Once setup is done, run `python main.py` and start exploring — see
-[Try it yourself](#try-it-yourself-no-coding-required) above.
+Once setup is done, run `python main.py` (Option B) or `docker compose run --rm app`
+(Option A) and start exploring — see [Try it yourself](#try-it-yourself-no-coding-required)
+above.
+
+> Always add `-d` to `docker compose up`. Without it, your terminal attaches to the live log
+> stream of every container — including MongoDB's healthcheck, which logs a connection every
+> 5 seconds for as long as the container runs. `-d` runs everything in the background instead.
 
 ## Usage
 
@@ -102,7 +153,7 @@ Beyond the interactive menu, every action is also available as a direct, scripta
 useful for automation, testing, or demoing a single action without going through the menu.
 
 ```bash
-# via the unified entry point
+# via the unified entry point (Option B, local Python)
 python main.py register-user <username> <email> <password> "<display name>"
 python main.py create-post <author_user_id> "post content" --tag python --tag postgres --location Kigali
 python main.py follow-user <follower_user_id> <followee_user_id>
@@ -116,6 +167,9 @@ python main.py get-trending-posts --since-hours 24 --limit 10
 python scripts/register_user.py <username> <email> <password> "<display name>"
 python scripts/follow_user.py <follower_user_id> <followee_user_id>
 python scripts/analyze_feed_query.py   # diagnostic only; no main.py subcommand
+
+# equivalently, fully dockerized (Option A) — prefix any of the above with:
+docker compose run --rm app python main.py register-user <username> <email> <password> "<display name>"
 ```
 
 `follow-user` and `unfollow-user` are idempotent: running either twice in a row is a no-op
@@ -130,8 +184,9 @@ composition-root `main()` function, so behavior is identical either way.*
 ## Project layout
 
 ```text
-Database_Fundamentals/
-├── docker-compose.yml           # PostgreSQL, Redis, MongoDB for local development
+Social_Media_Lab/                 # this project — one lab inside a larger training monorepo
+├── docker-compose.yml           # PostgreSQL, Redis, MongoDB, and the app itself (profile "cli")
+├── Dockerfile                    # builds the `app` service — the CLI, fully containerized
 ├── sql/schema.sql                # 3NF DDL: tables, constraints, indexes
 ├── docs/er_diagram.md            # Mermaid ER diagram
 ├── scripts/                      # thin CLI entry points
@@ -148,6 +203,63 @@ Database_Fundamentals/
     ├── unit/                     # mirrors src/, mocked psycopg2 + fakeredis/mongomock + fakes
     └── integration/               # real docker-compose services, `pytest -m integration`
 ```
+
+## Data model
+=======================================================================
+docker compose run --rm app                    # interactive menu
+docker compose run --rm app python main.py register-user <username> <email> <password> "<display name>"
+======================================================================
+
+
+Four normalized (3NF) PostgreSQL tables carry every relationship except likes (see
+[Scope decisions](#scope-decisions)):
+
+```mermaid
+erDiagram
+    USERS ||--o{ POSTS : authors
+    USERS ||--o{ COMMENTS : writes
+    POSTS ||--o{ COMMENTS : receives
+    USERS ||--o{ FOLLOWERS : "follows (follower_user_id)"
+    USERS ||--o{ FOLLOWERS : "is followed by (followee_user_id)"
+
+    USERS {
+        bigint user_id PK
+        varchar username UK
+        varchar email UK
+        text password_hash
+        varchar display_name
+        timestamptz created_at
+    }
+
+    POSTS {
+        bigint post_id PK
+        bigint author_user_id FK
+        text content
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    COMMENTS {
+        bigint comment_id PK
+        bigint post_id FK
+        bigint commenter_user_id FK
+        text content
+        timestamptz created_at
+    }
+
+    FOLLOWERS {
+        bigint follower_user_id PK,FK
+        bigint followee_user_id PK,FK
+        timestamptz created_at
+    }
+```
+
+`followers` is a many-to-many self-relationship on `users`: each row means
+`follower_user_id` follows `followee_user_id`. The composite primary key
+`(follower_user_id, followee_user_id)` prevents duplicate follow edges and doubles as
+a B-tree index for "who does this user follow"; `idx_followers_followee_follower`
+covers the reverse "who follows this user" lookup. All foreign keys cascade on delete.
+(Full diagram source: [`docs/er_diagram.md`](docs/er_diagram.md).)
 
 ## Architecture
 
@@ -308,3 +420,65 @@ black src tests scripts
 ruff check src tests scripts
 mypy src tests scripts
 ```
+
+## Interview prep: likely questions
+
+Short answers you can expand on live, each backed by a section above.
+
+**"Why three different databases instead of just one?"**
+Each store is doing the job it's actually good at, not spread thin for its own sake:
+PostgreSQL is the single source of truth needing ACID transactions and foreign-key
+integrity (users, posts, comments, follows); Redis is a disposable read-through cache
+sitting in front of the one query that's read far more than it's written (the feed);
+MongoDB is a schema-flexible, append-only event log for activity that's write-heavy,
+never updated, and doesn't need relational integrity (likes, follow/post/comment
+events). See [Scope decisions](#scope-decisions).
+
+**"How do you keep Postgres and MongoDB consistent when a follow also logs an activity event?"**
+Deliberately, they aren't kept consistent via 2PC — Postgres is authoritative. The Mongo
+write only happens *after* the Postgres transaction commits, and is best-effort: if it
+fails, the failure is logged but the already-committed follow/unfollow is never rolled
+back. See [The transactional follow/unfollow contract](#the-transactional-followunfollow-contract),
+point 6.
+
+**"How is `follow_user` made atomic, and what happens on a race (double-click follow twice)?"**
+One `INSERT ... ON CONFLICT (follower_user_id, followee_user_id) DO NOTHING` inside a
+single pooled connection's transaction — `cursor.rowcount` tells the service whether a
+row was actually inserted, which becomes `FollowResult.CREATED` vs `ALREADY_EXISTS`.
+Self-follows are rejected before any SQL runs *and* blocked at the DB layer by a `CHECK`
+constraint (defense in depth — a test proves a mocked repository would let a self-follow
+through, but the real constraint won't). See the [contract](#the-transactional-followunfollow-contract).
+
+**"How does connection pooling work here?"**
+`psycopg2.pool.ThreadedConnectionPool` wrapped in a context manager
+(`PostgresConnectionPool.cursor()`) that checks a connection out, opens exactly one
+transaction, commits on clean exit / rolls back on exception, then always returns the
+connection to the pool — repositories never see a raw connection or call
+`.commit()`/`.rollback()` themselves. Pool exhaustion is caught and translated into a
+domain `ConnectionPoolExhaustedError` rather than leaking a raw `psycopg2.pool.PoolError`.
+This is tested against a *real* pool sized to exactly one connection in
+[`test_postgres_connection_pool.py`](tests/integration/test_postgres_connection_pool.py).
+
+**"How is the feed query made fast, and how did you prove it?"**
+Two CTEs (who I follow → their posts) plus `ROW_NUMBER()` for stable, offset-free
+pagination, backed by a composite index `idx_posts_author_created_at (author_user_id,
+created_at DESC)` that turns the plan into an index scan instead of a sequential scan
+plus sort. Proven, not assumed: `scripts/analyze_feed_query.py` runs `EXPLAIN ANALYZE`
+with the index, drops it, runs it again to show the fallback plan, then restores it.
+See [Feed query performance](#feed-query-performance).
+
+**"What's your testing strategy, and why not mock everything?"**
+Unit tests mock/fake every I/O boundary (`MagicMock(spec=PostgresConnectionPool)`,
+`fakeredis`, `mongomock`) and run by default with no services needed — fast feedback,
+but they'd happily let a self-follow "succeed" against a mock. Integration tests
+(`pytest -m integration`) run the exact same code against the real docker-compose stack
+specifically to catch what a mock can't: real `CHECK`/foreign-key violations, real pool
+exhaustion, real rollback-on-exception, real query correctness and pagination. See
+[Testing, formatting, and type-checking](#testing-formatting-and-type-checking).
+
+**"How are passwords handled?"**
+Never stored or logged in plaintext. Each password is combined with a random per-user
+salt and run through `scrypt` (deliberately slow and memory-hard to resist brute-force);
+login verification uses a constant-time comparison so response timing can't leak how
+close a guess was. A failed login and a nonexistent username return the identical error
+— no user-enumeration side channel. See [Account security](#account-security).
