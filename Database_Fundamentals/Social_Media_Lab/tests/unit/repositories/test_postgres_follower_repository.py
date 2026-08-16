@@ -7,11 +7,9 @@ from unittest.mock import MagicMock
 import psycopg2.errors
 import pytest
 
-from social_platform.models.exceptions import UserNotFoundError
-from social_platform.models.results import FollowResult, UnfollowResult
-from social_platform.repositories.postgres_follower_repository import (
-    PostgresFollowerRepository,
-)
+from social_platform.common.exceptions import UserNotFoundError
+from social_platform.features.followers.model import FollowResult, UnfollowResult
+from social_platform.features.followers.repository import PostgresFollowerRepository
 
 
 def test_create_follow_relationship_returns_created_when_a_row_is_inserted(

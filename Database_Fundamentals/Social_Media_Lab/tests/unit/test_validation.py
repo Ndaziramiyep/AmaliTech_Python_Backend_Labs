@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from social_platform.models.exceptions import InvalidEmailError, InvalidUsernameError
-from social_platform.validation import validate_email, validate_username
+from social_platform.common.exceptions import InvalidEmailError, InvalidUsernameError
+from social_platform.common.validation import validate_email, validate_username
 
 
 @pytest.mark.parametrize("valid_username", ["ada", "grace_hopper", "user123", "a" * 30])

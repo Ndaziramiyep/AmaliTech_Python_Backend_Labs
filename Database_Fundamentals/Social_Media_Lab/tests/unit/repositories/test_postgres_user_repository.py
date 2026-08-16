@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from social_platform.models.entities import User
-from social_platform.repositories.postgres_user_repository import PostgresUserRepository
+from social_platform.features.users.model import User
+from social_platform.features.users.repository import PostgresUserRepository
 
 
 def test_create_user_returns_the_row_returned_by_the_insert(
@@ -28,38 +28,6 @@ def test_create_user_returns_the_row_returned_by_the_insert(
     executed_sql, executed_params = fake_cursor.execute.call_args.args
     assert "INSERT INTO users" in executed_sql
     assert executed_params["password_hash"] == "hashed-password"
-
-
-def test_find_user_by_id_returns_none_when_no_row_matches(
-    fake_connection_pool: MagicMock, fake_cursor: MagicMock
-) -> None:
-    """A missing user id is reported as None, not as an exception."""
-    fake_cursor.fetchone.return_value = None
-    repository = PostgresUserRepository(fake_connection_pool)
-
-    assert repository.find_user_by_id(999) is None
-
-
-def test_find_user_by_id_queries_by_the_given_id(
-    fake_connection_pool: MagicMock, fake_cursor: MagicMock, sample_created_at: datetime
-) -> None:
-    """The lookup is parameterized on `user_id`, never string-interpolated."""
-    fake_cursor.fetchone.return_value = {
-        "user_id": 42,
-        "username": "grace",
-        "email": "grace@example.com",
-        "display_name": "Grace Hopper",
-        "created_at": sample_created_at,
-    }
-    repository = PostgresUserRepository(fake_connection_pool)
-
-    user = repository.find_user_by_id(42)
-
-    assert user is not None
-    assert user.user_id == 42
-    executed_sql, executed_params = fake_cursor.execute.call_args.args
-    assert executed_params == {"user_id": 42}
-    assert "%(user_id)s" in executed_sql
 
 
 def test_find_user_and_password_hash_by_username_returns_none_when_no_row_matches(

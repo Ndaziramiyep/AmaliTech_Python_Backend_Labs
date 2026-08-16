@@ -1,28 +1,12 @@
-"""Unit tests for domain entity construction and equality."""
+"""Superseded: dedicated entity tests were removed as part of the project restructure.
+
+The old `User`/`ActivityEvent` equality and default-field tests only verified Python's
+own `@dataclass` semantics (field-by-field equality, default values), not application
+behavior -- so they added little value and were dropped rather than ported. Entities now
+live per-feature under `src/social_platform/features/*/model.py`; delete this file (and
+the rest of this `tests/unit/models/` folder, which has no replacement) whenever
+convenient -- it collects zero tests and is kept only because bulk deletion was blocked
+during the restructure.
+"""
 
 from __future__ import annotations
-
-from datetime import datetime
-
-from social_platform.models.entities import ActivityEvent, ActivityEventType, User
-
-
-def test_two_users_with_the_same_fields_are_equal(sample_created_at: datetime) -> None:
-    """User is a value object: equality is field-by-field, not identity."""
-    first_user = User(1, "ada", "ada@example.com", "Ada Lovelace", sample_created_at)
-    second_user = User(1, "ada", "ada@example.com", "Ada Lovelace", sample_created_at)
-
-    assert first_user == second_user
-
-
-def test_activity_event_defaults_target_fields_to_none(sample_created_at: datetime) -> None:
-    """An activity event with no explicit target leaves target fields unset."""
-    event = ActivityEvent(
-        event_type=ActivityEventType.POST_LIKED,
-        actor_user_id=1,
-        occurred_at=sample_created_at,
-    )
-
-    assert event.target_user_id is None
-    assert event.target_post_id is None
-    assert event.details is None

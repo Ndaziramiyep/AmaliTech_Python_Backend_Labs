@@ -1,8 +1,8 @@
-"""Unit tests for PostCreationService."""
+"""Unit tests for PostService.create_post."""
 
 from __future__ import annotations
 
-from social_platform.services.post_creation_service import PostCreationService
+from social_platform.features.posts.service import PostService
 from tests.unit.services._fakes import FakeActivityLogRepository, FakePostRepository
 
 
@@ -11,7 +11,7 @@ def test_create_post_stores_tags_and_location_as_metadata(
     fake_activity_log_repository: FakeActivityLogRepository,
 ) -> None:
     """Tags and location are packed into the post's JSONB metadata dict."""
-    service = PostCreationService(fake_post_repository, fake_activity_log_repository)
+    service = PostService(fake_post_repository, fake_activity_log_repository)
 
     post = service.create_post(1, "hello", tags=["python", "sql"], location="Kigali")
 
@@ -23,7 +23,7 @@ def test_create_post_omits_metadata_keys_that_were_not_provided(
     fake_activity_log_repository: FakeActivityLogRepository,
 ) -> None:
     """A post created with no tags or location has empty metadata."""
-    service = PostCreationService(fake_post_repository, fake_activity_log_repository)
+    service = PostService(fake_post_repository, fake_activity_log_repository)
 
     post = service.create_post(1, "hello")
 
@@ -35,7 +35,7 @@ def test_create_post_logs_a_post_created_activity_event(
     fake_activity_log_repository: FakeActivityLogRepository,
 ) -> None:
     """Creating a post logs exactly one post_created activity event."""
-    service = PostCreationService(fake_post_repository, fake_activity_log_repository)
+    service = PostService(fake_post_repository, fake_activity_log_repository)
 
     post = service.create_post(1, "hello")
 
@@ -50,7 +50,7 @@ def test_create_post_succeeds_even_when_activity_logging_fails(
     failing_activity_log_repository = FakeActivityLogRepository(
         raise_on_record=RuntimeError("boom")
     )
-    service = PostCreationService(fake_post_repository, failing_activity_log_repository)
+    service = PostService(fake_post_repository, failing_activity_log_repository)
 
     post = service.create_post(1, "hello")
 

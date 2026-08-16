@@ -7,9 +7,11 @@ import pytest
 from tests.unit.services._fakes import (
     FakeActivityLogRepository,
     FakeCommentRepository,
+    FakeFeedRepository,
     FakeFollowerRepository,
     FakePostRepository,
-    FakeTimelineCacheRepository,
+    FakeTimelineCache,
+    FakeTrendingRepository,
     FakeUserRepository,
 )
 
@@ -39,9 +41,21 @@ def fake_follower_repository() -> FakeFollowerRepository:
 
 
 @pytest.fixture
-def fake_timeline_cache_repository() -> FakeTimelineCacheRepository:
-    """A fresh in-memory timeline cache repository."""
-    return FakeTimelineCacheRepository()
+def fake_feed_repository() -> FakeFeedRepository:
+    """A fresh in-memory feed repository."""
+    return FakeFeedRepository()
+
+
+@pytest.fixture
+def fake_trending_repository() -> FakeTrendingRepository:
+    """A fresh in-memory trending repository."""
+    return FakeTrendingRepository()
+
+
+@pytest.fixture
+def fake_timeline_cache() -> FakeTimelineCache:
+    """A fresh in-memory timeline cache."""
+    return FakeTimelineCache()
 
 
 @pytest.fixture

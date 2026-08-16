@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from social_platform.database.postgres_connection_pool import PostgresConnectionPool
+from social_platform.common.postgres_pool import PostgresConnectionPool
 
 
 @pytest.fixture

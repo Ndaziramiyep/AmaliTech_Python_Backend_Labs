@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from social_platform.security.password_hashing import hash_password, verify_password
+from social_platform.common.security import hash_password, verify_password
 
 
 def test_verify_password_accepts_the_correct_password() -> None:

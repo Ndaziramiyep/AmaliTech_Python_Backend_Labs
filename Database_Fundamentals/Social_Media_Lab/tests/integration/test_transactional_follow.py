@@ -11,25 +11,21 @@ from typing import Any
 import pytest
 from pymongo.database import Database
 
-from social_platform.database.postgres_connection_pool import PostgresConnectionPool
-from social_platform.models.entities import User
-from social_platform.models.exceptions import InvalidFollowOperationError, UserNotFoundError
-from social_platform.models.results import FollowResult, UnfollowResult
-from social_platform.repositories.mongo_activity_log_repository import (
-    MongoActivityLogRepository,
-)
-from social_platform.repositories.postgres_follower_repository import (
-    PostgresFollowerRepository,
-)
-from social_platform.services.user_following_service import UserFollowingService
+from social_platform.common.exceptions import InvalidFollowOperationError, UserNotFoundError
+from social_platform.common.postgres_pool import PostgresConnectionPool
+from social_platform.features.activity_log.repository import MongoActivityLogRepository
+from social_platform.features.followers.model import FollowResult, UnfollowResult
+from social_platform.features.followers.repository import PostgresFollowerRepository
+from social_platform.features.followers.service import FollowService
+from social_platform.features.users.model import User
 
 pytestmark = pytest.mark.integration
 
 
 def _make_service(
     connection_pool: PostgresConnectionPool, mongo_database: Database[dict[str, Any]]
-) -> UserFollowingService:
-    return UserFollowingService(
+) -> FollowService:
+    return FollowService(
         PostgresFollowerRepository(connection_pool),
         MongoActivityLogRepository(mongo_database),
     )

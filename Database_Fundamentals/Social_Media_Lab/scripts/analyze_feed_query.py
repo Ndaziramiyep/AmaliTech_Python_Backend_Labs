@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from social_platform.config.application_settings import ApplicationSettings
-from social_platform.database.postgres_connection_pool import PostgresConnectionPool
-from social_platform.repositories.postgres_post_repository import _FEED_QUERY
+from social_platform.common.postgres_pool import PostgresConnectionPool
+from social_platform.common.settings import ApplicationSettings
+from social_platform.features.feed.repository import FEED_QUERY
 
 _SAMPLE_FOLLOWER_USER_ID = 1
 _FEED_INDEX_NAME = "idx_posts_author_created_at"
@@ -37,7 +37,7 @@ def main() -> int:
 def _print_feed_query_plan(connection_pool: PostgresConnectionPool) -> None:
     with connection_pool.cursor() as cursor:
         cursor.execute(
-            f"EXPLAIN ANALYZE {_FEED_QUERY}",
+            f"EXPLAIN ANALYZE {FEED_QUERY}",
             {"follower_user_id": _SAMPLE_FOLLOWER_USER_ID, "first_row": 1, "last_row": 20},
         )
         for row in cursor.fetchall():
