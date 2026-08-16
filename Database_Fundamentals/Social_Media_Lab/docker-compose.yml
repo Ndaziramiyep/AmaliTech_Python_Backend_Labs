@@ -6,7 +6,10 @@ services:
       POSTGRES_USER: social_platform
       POSTGRES_PASSWORD: social_platform
     ports:
-      - "5432:5432"
+      # Host port 5433 (not 5432) to avoid clashing with a native PostgreSQL install on
+      # the host. The container's internal port stays 5432; the `app` service below
+      # talks to it over the internal Docker network and is unaffected by this remap.
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql

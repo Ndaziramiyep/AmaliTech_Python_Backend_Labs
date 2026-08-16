@@ -27,7 +27,7 @@ class PostgresSettings:
         """Build settings from `POSTGRES_*` environment variables."""
         return cls(
             host=os.environ.get("POSTGRES_HOST", "localhost"),
-            port=int(os.environ.get("POSTGRES_PORT", "5432")),
+            port=int(os.environ.get("POSTGRES_PORT", "5433")),
             database_name=os.environ.get("POSTGRES_DB", "social_platform"),
             username=os.environ.get("POSTGRES_USER", "social_platform"),
             password=os.environ.get("POSTGRES_PASSWORD", "social_platform"),
