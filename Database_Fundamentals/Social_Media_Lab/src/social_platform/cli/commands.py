@@ -53,7 +53,6 @@ def _build_parser() -> argparse.ArgumentParser:
     register_user.add_argument("username")
     register_user.add_argument("email")
     register_user.add_argument("password")
-    register_user.add_argument("display_name")
     register_user.set_defaults(handler=_register_user)
 
     create_post = subparsers.add_parser("create-post", help="Create a post.")
@@ -99,9 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _register_user(arguments: argparse.Namespace, context: AppContext) -> None:
     service = UserService(context.user_repository)
-    user = service.register(
-        arguments.username, arguments.email, arguments.password, arguments.display_name
-    )
+    user = service.register(arguments.username, arguments.email, arguments.password)
     print(f"Registered user {user.user_id} (@{user.username}).")
 
 

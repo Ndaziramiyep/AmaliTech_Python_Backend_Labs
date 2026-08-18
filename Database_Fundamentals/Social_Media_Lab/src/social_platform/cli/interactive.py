@@ -86,28 +86,37 @@ def _handle_login(input_function: InputFunction, context: AppContext) -> User | 
         print(f"Error: {error}")
         return None
 
-    print(f"Welcome back, {user.display_name}!")
+    print(f"Welcome back, @{user.username}!")
     return user
 
 
 def _handle_register(input_function: InputFunction, context: AppContext) -> User | None:
     username = _prompt_required(input_function, "Choose a username (3-30 letters/digits/_): ")
     email = _prompt_required(input_function, "Email: ")
-    password = _prompt_required(
-        input_function,
-        "Choose a password (8+ chars, upper, lower, digit, special character): ",
-    )
-    display_name = _prompt_required(input_function, "Display name: ")
+    password = _prompt_password_with_confirmation(input_function)
 
     user_service = UserService(context.user_repository)
     try:
-        user = user_service.register(username, email, password, display_name)
+        user = user_service.register(username, email, password)
     except SocialPlatformError as error:
         print(f"Error: {error}")
         return None
 
     print(f"Registered user {user.user_id} (@{user.username}). You are now logged in.")
     return user
+
+
+def _prompt_password_with_confirmation(input_function: InputFunction) -> str:
+    """Prompt for a password twice, re-prompting both until the two entries match."""
+    while True:
+        password = _prompt_required(
+            input_function,
+            "Choose a password (8+ chars, upper, lower, digit, special character): ",
+        )
+        confirmation = _prompt_required(input_function, "Confirm password: ")
+        if password == confirmation:
+            return password
+        print("Passwords do not match. Please try again.")
 
 
 def _run_action_loop(input_function: InputFunction, context: AppContext, user: User) -> bool:

@@ -48,7 +48,7 @@ def test_register_user_prints_the_new_user_and_returns_zero(
     """A successful registration prints the new user's id and username."""
     _patch_context(mocker, _build_fake_context())
 
-    exit_code = main(["register-user", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace"])
+    exit_code = main(["register-user", "ada", "ada@example.com", "Super-secret1"])
 
     assert exit_code == 0
     assert "Registered user 1 (@ada)" in capsys.readouterr().out

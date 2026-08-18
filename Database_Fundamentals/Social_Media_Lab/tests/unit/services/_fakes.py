@@ -25,8 +25,8 @@ class FakeUserRepository:
         self.password_hashes_by_username: dict[str, str] = {}
         self.next_user_id = 1
 
-    def create_user(self, username: str, email: str, password_hash: str, display_name: str) -> User:
-        user = User(self.next_user_id, username, email, display_name, datetime.now())
+    def create_user(self, username: str, email: str, password_hash: str) -> User:
+        user = User(self.next_user_id, username, email, datetime.now())
         self.users_by_id[user.user_id] = user
         self.password_hashes_by_username[username] = password_hash
         self.next_user_id += 1
