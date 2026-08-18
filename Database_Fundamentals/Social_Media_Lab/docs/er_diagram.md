@@ -13,7 +13,6 @@ erDiagram
         varchar username UK
         varchar email UK
         text password_hash
-        varchar display_name
         timestamptz created_at
     }
 

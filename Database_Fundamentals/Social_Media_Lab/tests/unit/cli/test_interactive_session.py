@@ -67,7 +67,7 @@ def test_register_then_exit_logs_the_new_user_in_and_closes_the_connection_pool(
     connection_pool = MagicMock()
     context = _build_fake_context(connection_pool=connection_pool)
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Super-secret1", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: context)
@@ -79,12 +79,38 @@ def test_register_then_exit_logs_the_new_user_in_and_closes_the_connection_pool(
     connection_pool.close_all_connections.assert_called_once_with()
 
 
+def test_register_with_mismatched_passwords_reprompts_until_they_match(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A confirmation that doesn't match the password is rejected, and both are re-asked."""
+    context = _build_fake_context()
+    scripted_input = _ScriptedInput(
+        [
+            "2",
+            "ada",
+            "ada@example.com",
+            "Super-secret1",
+            "Something-else1",  # mismatched confirmation -> re-prompted
+            "Super-secret1",
+            "Super-secret1",
+            "9",
+        ]
+    )
+
+    exit_code = run_interactive_session(scripted_input, lambda: context)
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Passwords do not match. Please try again." in output
+    assert "Registered user 1 (@ada)" in output
+
+
 def test_register_with_a_weak_password_reports_the_error_and_allows_retry(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A weak password is rejected with a clear message, without abandoning the session."""
     context = _build_fake_context()
-    scripted_input = _ScriptedInput(["2", "ada", "ada@example.com", "weak", "Ada Lovelace", "3"])
+    scripted_input = _ScriptedInput(["2", "ada", "ada@example.com", "weak", "weak", "3"])
 
     exit_code = run_interactive_session(scripted_input, lambda: context)
 
@@ -120,7 +146,7 @@ def test_create_post_uses_the_logged_in_user_as_the_author(
             "ada",
             "ada@example.com",
             "Super-secret1",
-            "Ada Lovelace",
+            "Super-secret1",
             "1",
             "hello world",
             "",
@@ -143,7 +169,7 @@ def test_follow_user_uses_the_logged_in_user_as_the_follower() -> None:
     follower_repository = FakeFollowerRepository()
     context = _build_fake_context(follower_repository=follower_repository)
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "2", "7", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Super-secret1", "2", "7", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: context)
@@ -158,7 +184,7 @@ def test_view_feed_reports_no_posts_when_the_feed_is_empty(
     """An empty feed page prints a friendly message instead of nothing."""
     context = _build_fake_context()
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "6", "", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Super-secret1", "6", "", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: context)
@@ -181,7 +207,17 @@ def test_add_comment_lists_feed_posts_and_comments_on_the_chosen_one(
         feed_repository=feed_repository, comment_repository=comment_repository
     )
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "4", "2", "nice one", "9"]
+        [
+            "2",
+            "ada",
+            "ada@example.com",
+            "Super-secret1",
+            "Super-secret1",
+            "4",
+            "2",
+            "nice one",
+            "9",
+        ]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: context)
@@ -208,7 +244,7 @@ def test_like_post_lists_feed_posts_and_likes_the_chosen_one() -> None:
         activity_log_repository=activity_log_repository,
     )
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "5", "1", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Super-secret1", "5", "1", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: context)
@@ -223,7 +259,7 @@ def test_add_comment_with_an_empty_feed_reports_no_posts_available(
     """With an empty feed, commenting is refused with a friendly message, not a raw id prompt."""
     context = _build_fake_context()
     scripted_input = _ScriptedInput(
-        ["2", "ada", "ada@example.com", "Super-secret1", "Ada Lovelace", "4", "9"]
+        ["2", "ada", "ada@example.com", "Super-secret1", "Super-secret1", "4", "9"]
     )
 
     exit_code = run_interactive_session(scripted_input, lambda: context)

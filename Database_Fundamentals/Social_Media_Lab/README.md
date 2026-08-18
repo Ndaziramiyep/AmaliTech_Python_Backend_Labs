@@ -104,7 +104,7 @@ Every scriptable command works the same way, substituting `python main.py ...` f
 `docker compose run --rm app python main.py ...`:
 
 ```bash
-docker compose run --rm app python main.py register-user <username> <email> <password> "<display name>"
+docker compose run --rm app python main.py register-user <username> <email> <password>
 ```
 
 The `app` service ([`Dockerfile`](Dockerfile)) is *not* started by plain `docker compose up` —
@@ -136,8 +136,12 @@ first time it runs, using [`sql/schema.sql`](sql/schema.sql). If you ever need t
 that schema to an already-running database by hand:
 
 ```bash
-psql -h localhost -U social_platform -d social_platform -f sql/schema.sql
+psql -h localhost -p 5433 -U social_platform -d social_platform -f sql/schema.sql
 ```
+
+> Postgres is published on host port **5433**, not the default 5432 — this avoids clashing
+> with a locally installed PostgreSQL server, if you have one. The container's internal port
+> is still 5432; only the host-side mapping changed, so nothing inside Docker needed to change.
 
 Once setup is done, run `python main.py` (Option B) or `docker compose run --rm app`
 (Option A) and start exploring — see [Try it yourself](#try-it-yourself-no-coding-required)
@@ -154,7 +158,7 @@ useful for automation, testing, or demoing a single action without going through
 
 ```bash
 # via the unified entry point (Option B, local Python)
-python main.py register-user <username> <email> <password> "<display name>"
+python main.py register-user <username> <email> <password>
 python main.py create-post <author_user_id> "post content" --tag python --tag postgres --location Kigali
 python main.py follow-user <follower_user_id> <followee_user_id>
 python main.py unfollow-user <follower_user_id> <followee_user_id>
@@ -163,53 +167,71 @@ python main.py like-post <actor_user_id> <post_id>
 python main.py get-user-feed <follower_user_id> --page 1
 python main.py get-trending-posts --since-hours 24 --limit 10
 
-# equivalently, via the standalone scripts
-python scripts/register_user.py <username> <email> <password> "<display name>"
-python scripts/follow_user.py <follower_user_id> <followee_user_id>
 python scripts/analyze_feed_query.py   # diagnostic only; no main.py subcommand
 
 # equivalently, fully dockerized (Option A) — prefix any of the above with:
-docker compose run --rm app python main.py register-user <username> <email> <password> "<display name>"
+docker compose run --rm app python main.py register-user <username> <email> <password>
 ```
 
 `follow-user` and `unfollow-user` are idempotent: running either twice in a row is a no-op
 success (`Follow result: already_exists`, `Unfollow result: did_not_exist`), never an error.
 
-*For developers: every operation above is backed by a thin composition-root module in
-[`src/social_platform/cli/`](src/social_platform/cli/); each reads connection settings from the
-environment via [`ApplicationSettings`](src/social_platform/config/application_settings.py).
-`main.py` and the standalone scripts under [`scripts/`](scripts/) call the same
-composition-root `main()` function, so behavior is identical either way.*
+*For developers: every subcommand is defined in one place,
+[`src/social_platform/cli/commands.py`](src/social_platform/cli/commands.py) — an argparse
+subparser per action, each building only the services it needs from a shared
+[`AppContext`](src/social_platform/cli/app_context.py) and reporting either success or a clean
+domain error. `main.py` reads connection settings from the environment via
+[`ApplicationSettings`](src/social_platform/common/settings.py) and dispatches to either
+`commands.py` (any arguments) or the interactive menu (`cli/interactive.py`, no arguments).*
 
 ## Project layout
 
+Code is organized **by feature, not by technical layer**: everything about posts — the
+entity, the SQL, and the business logic — lives together in one folder, instead of being
+spread across separate top-level `models/`, `repositories/`, and `services/` trees.
+
 ```text
 Social_Media_Lab/                 # this project — one lab inside a larger training monorepo
-├── docker-compose.yml           # PostgreSQL, Redis, MongoDB, and the app itself (profile "cli")
+├── docker-compose.yml            # PostgreSQL, Redis, MongoDB, and the app itself (profile "cli")
 ├── Dockerfile                    # builds the `app` service — the CLI, fully containerized
 ├── sql/schema.sql                # 3NF DDL: tables, constraints, indexes
 ├── docs/er_diagram.md            # Mermaid ER diagram
-├── scripts/                      # thin CLI entry points
+├── scripts/analyze_feed_query.py # EXPLAIN ANALYZE diagnostic for the feed query
 ├── src/social_platform/
-│   ├── config/                   # environment-driven settings, no deps on other layers
-│   ├── models/                   # entities, result enums, exceptions — no deps on other layers
-│   ├── database/                 # connection pooling/factories — depends on config
-│   ├── security/                 # password hashing and strength rules — no deps on other layers
-│   ├── repositories/             # interfaces (DIP/ISP) + Postgres/Redis/Mongo implementations
-│   ├── services/                 # business logic — depends only on repository interfaces
-│   └── cli/                      # composition root — wires concrete repositories to services,
-│                                  # plus the interactive menu-driven session
+│   ├── common/                   # cross-feature infrastructure, no feature depends on another
+│   │   ├── settings.py           #   environment-driven configuration
+│   │   ├── postgres_pool.py      #   pooled connections + the transactional cursor
+│   │   ├── redis_client.py       #   Redis client factory
+│   │   ├── mongo_client.py       #   MongoDB client factory
+│   │   ├── security.py           #   password hashing + strength policy
+│   │   ├── validation.py         #   username/email format checks
+│   │   └── exceptions.py         #   the domain exception hierarchy
+│   ├── features/
+│   │   ├── users/                # model.py + repository.py (Protocol + Postgres impl) + service.py
+│   │   ├── posts/                #   same shape: model, repository, service
+│   │   ├── comments/             #   same shape
+│   │   ├── followers/            #   same shape — the transactional follow/unfollow service
+│   │   ├── feed/                 #   model, repository (the CTE query), cache (Redis), service
+│   │   ├── trending/             #   model, repository (the ranking query), service
+│   │   ├── engagement/           #   service only — likes have no table of their own
+│   │   └── activity_log/         #   model, repository (MongoDB)
+│   └── cli/
+│       ├── app_context.py        #   composition root: wires every concrete repository
+│       ├── commands.py           #   scriptable subcommands (argparse)
+│       └── interactive.py        #   the menu-driven session
 └── tests/
-    ├── unit/                     # mirrors src/, mocked psycopg2 + fakeredis/mongomock + fakes
-    └── integration/               # real docker-compose services, `pytest -m integration`
+    ├── unit/                     # mocked psycopg2 + fakeredis/mongomock + hand-written fakes
+    └── integration/              # real docker-compose services, `pytest -m integration`
 ```
 
-## Data model
-=======================================================================
-docker compose run --rm app                    # interactive menu
-docker compose run --rm app python main.py register-user <username> <email> <password> "<display name>"
-======================================================================
+Each feature's `repository.py` defines a small `typing.Protocol` right above its concrete
+`Postgres*`/`Redis*`/`Mongo*` implementation — e.g. `UserRepository` (the contract) and
+`PostgresUserRepository` (the implementation) both live in
+[`features/users/repository.py`](src/social_platform/features/users/repository.py). Services
+depend on the Protocol, never the concrete class, which keeps Dependency Inversion without a
+separate top-level `interfaces.py` file to jump to.
 
+## Data model
 
 Four normalized (3NF) PostgreSQL tables carry every relationship except likes (see
 [Scope decisions](#scope-decisions)):
@@ -227,7 +249,6 @@ erDiagram
         varchar username UK
         varchar email UK
         text password_hash
-        varchar display_name
         timestamptz created_at
     }
 
@@ -263,39 +284,46 @@ covers the reverse "who follows this user" lookup. All foreign keys cascade on d
 
 ## Architecture
 
-Dependency direction is strictly inward: `cli` → `services` → `repositories/interfaces.py` ←
-`repositories/postgres_*.py` / `redis_*.py` / `mongo_*.py` → `database` / `security` →
-`config` / `models`.
+Dependency direction is strictly inward, per feature: `cli` → `features/*/service.py` →
+`features/*/repository.py` (a `Protocol`) ← its own `Postgres*`/`Redis*`/`Mongo*`
+implementation → `common/`. A feature may depend on another feature's repository or model
+(e.g. `engagement` reads `posts`' `PostRepository` to check a post exists) but never
+reaches into another feature's internals beyond its public `model.py`/`repository.py`.
 
-- **`models/`** — dataclass entities (`User`, `Post`, `Comment`, `FollowRelationship`,
-  `FeedPostEntry`, `TrendingPostEntry`, `ActivityEvent`), the `FollowResult`/`UnfollowResult`
-  outcome enums, and the domain exception hierarchy. No psycopg2/redis/pymongo import ever
+- **`common/`** — settings, pooled connections, password hashing, validation, and the
+  exception hierarchy. Nothing feature-specific lives here, and nothing here imports from
+  `features/`.
+- **`features/*/model.py`** — the dataclass entities for that feature (`User`, `Post`,
+  `Comment`, `FeedPostEntry`, `TrendingPostEntry`, `ActivityEvent`, the
+  `FollowResult`/`UnfollowResult` outcome enums). No psycopg2/redis/pymongo import ever
   appears here.
-- **`repositories/interfaces.py`** — one narrow abstract base class per aggregate
-  (`UserRepositoryInterface`, `PostRepositoryInterface`, `CommentRepositoryInterface`,
-  `FollowerRepositoryInterface`, `TimelineCacheRepositoryInterface`,
-  `ActivityLogRepositoryInterface`) — Dependency Inversion and Interface Segregation in
-  practice: services depend on these, never on `Postgres*`/`Redis*`/`Mongo*` classes directly.
-- **`services/`** — one class per use case, each taking its repository dependencies through its
-  constructor. No service ever imports psycopg2, redis, or pymongo.
-- **`cli/`** — the only layer allowed to construct concrete repositories
-  ([`cli/_composition.py`](src/social_platform/cli/_composition.py)) and translate domain
-  exceptions into exit codes. Also home to the interactive menu-driven session
-  ([`cli/interactive_session.py`](src/social_platform/cli/interactive_session.py)).
+- **`features/*/repository.py`** (and `feed/cache.py`) — a narrow `typing.Protocol` (the
+  contract a service depends on) plus one concrete `Postgres*`/`Redis*`/`Mongo*`
+  implementation. This is Dependency Inversion and Interface Segregation without a
+  separate `interfaces.py` file: the contract and its one implementation sit side by side,
+  in the same file, for the same feature.
+- **`features/*/service.py`** — one class per use case, taking its repository dependencies
+  through its constructor as `Protocol` types. No service ever imports psycopg2, redis, or
+  pymongo directly.
+- **`cli/app_context.py`** — the only module allowed to construct concrete repositories,
+  wiring them into one `AppContext` from environment settings.
+- **`cli/commands.py`** / **`cli/interactive.py`** — build services from the `AppContext`,
+  run one use case, and translate domain exceptions into exit codes or clean error messages.
+  Neither ever touches psycopg2/redis/pymongo directly.
 
 ## The transactional follow/unfollow contract
 
-`UserFollowingService.follow_user` / `unfollow_user`
-([source](src/social_platform/services/user_following_service.py)) is the feature this lab
+`FollowService.follow_user` / `unfollow_user`
+([source](src/social_platform/features/followers/service.py)) is the feature this lab
 grades most heavily, so its contract is explicit rather than left to convention:
 
 1. **Self-follow is rejected up front** (`InvalidFollowOperationError`) before any SQL runs —
    a clean domain error instead of a parsed `CheckViolation`.
 2. **The follow/unfollow edge write is one atomic PostgreSQL transaction**
-   ([`PostgresFollowerRepository`](src/social_platform/repositories/postgres_follower_repository.py)):
+   ([`PostgresFollowerRepository`](src/social_platform/features/followers/repository.py)):
    `INSERT ... ON CONFLICT (follower_user_id, followee_user_id) DO NOTHING` for follow,
    a plain `DELETE` for unfollow. `PostgresConnectionPool.cursor()`
-   ([source](src/social_platform/database/postgres_connection_pool.py)) commits on a clean exit
+   ([source](src/social_platform/common/postgres_pool.py)) commits on a clean exit
    and rolls back on any exception — the repository and service never touch a raw connection.
 3. **Idempotent, not error-prone.** Re-following an already-followed user returns
    `FollowResult.ALREADY_EXISTS`; unfollowing a user not followed returns
@@ -322,7 +350,7 @@ constraint rejects.
 ## Feed query performance
 
 The timeline feed query
-([`postgres_post_repository.py`](src/social_platform/repositories/postgres_post_repository.py))
+([`features/feed/repository.py`](src/social_platform/features/feed/repository.py))
 uses two CTEs, a JOIN, and `ROW_NUMBER()` for pagination:
 
 ```sql
@@ -359,19 +387,25 @@ composite index is there to eliminate.
 ## Account security
 
 Passwords are never stored as typed. Registration and login both go through
-[`src/social_platform/security/`](src/social_platform/security/):
+[`common/security.py`](src/social_platform/common/security.py):
 
-- **Hashing** ([`password_hashing.py`](src/social_platform/security/password_hashing.py)) —
-  each password is combined with a random, per-user salt and run through `scrypt`, a
-  deliberately slow, memory-hard algorithm designed to resist brute-force guessing. Only the
-  salt and the resulting hash are stored; the original password is discarded immediately.
-  Verifying a login compares hashes using a constant-time comparison, so response timing can't
-  leak information about how close a guess was.
-- **Strength policy**
-  ([`password_policy.py`](src/social_platform/security/password_policy.py)) — a new password
-  must be at least 8 characters and include a lowercase letter, an uppercase letter, a digit,
-  and a special character. Registration rejects anything weaker with a clear
-  `WeakPasswordError` listing exactly what's missing, rather than a generic failure.
+- **Hashing** (`hash_password` / `verify_password`) — each password is combined with a
+  random, per-user salt and run through `scrypt`, a deliberately slow, memory-hard algorithm
+  designed to resist brute-force guessing. Only the salt and the resulting hash are stored;
+  the original password is discarded immediately. Verifying a login compares hashes using a
+  constant-time comparison, so response timing can't leak information about how close a
+  guess was.
+- **Strength policy** (`validate_password_strength`) — a new password must be at least 8
+  characters and include a lowercase letter, an uppercase letter, a digit, and a special
+  character. Registration rejects anything weaker with a clear `WeakPasswordError` listing
+  exactly what's missing, rather than a generic failure.
+- **Confirm-on-entry, in the interactive menu.** Registration asks for the password twice
+  and re-prompts both entries until they match
+  ([`_prompt_password_with_confirmation`](src/social_platform/cli/interactive.py)) —
+  a typo-catching UX check, not a domain rule, so it lives in the CLI layer rather than in
+  `UserService.register`. The scriptable `register-user` command takes a single password
+  argument with no confirmation step, since there's no "type it twice" in a one-shot command
+  line.
 
 ## Error handling
 
@@ -383,6 +417,8 @@ Passwords are never stored as typed. Registration and login both go through
 | `WeakPasswordError` | A new password fails the strength policy above. |
 | `PostNotFoundError` | An operation references a post id that does not exist. |
 | `ConnectionPoolExhaustedError` | No PostgreSQL connection is available from the pool. |
+
+All defined in [`common/exceptions.py`](src/social_platform/common/exceptions.py).
 
 Every CLI command catches `SocialPlatformError` (the root of this hierarchy), prints a clean
 message to stderr, and exits with status 1 — no raw tracebacks or psycopg2 exception types ever
@@ -399,7 +435,9 @@ reach the terminal.
   correctness, not trending.
 - **Likes have no PostgreSQL table.** Per the lab's data-store split ("MongoDB: store activity
   logs (likes, follows, etc.)"), a like is recorded only as a MongoDB activity-log document via
-  `PostEngagementService.like_post` — there is no relational `likes` table to keep in sync.
+  `EngagementService.like_post` — there is no relational `likes` table to keep in sync, and no
+  `features/engagement/model.py` or `repository.py` either, since there's no data of its own
+  to define.
 - **No cross-store two-phase commit.** The MongoDB activity-log write for follows/posts/comments
   is best-effort and happens after the PostgreSQL transaction commits (see
   [above](#the-transactional-followunfollow-contract)). PostgreSQL is the single source of
@@ -482,3 +520,33 @@ salt and run through `scrypt` (deliberately slow and memory-hard to resist brute
 login verification uses a constant-time comparison so response timing can't leak how
 close a guess was. A failed login and a nonexistent username return the identical error
 — no user-enumeration side channel. See [Account security](#account-security).
+
+**"Why organize code by feature instead of by technical layer (models/, repositories/, services/)?"**
+Both keep the same SOLID guarantees — Dependency Inversion via a `Protocol` per repository,
+one class per use case — but a layer-first layout means understanding "how following works"
+requires jumping across three unrelated top-level folders. Grouping `followers/model.py`,
+`repository.py`, and `service.py` together means one folder answers one question. The
+trade-off is explicit: a feature occasionally imports another feature's repository (e.g.
+`engagement` reads `posts`' `PostRepository`) rather than staying fully isolated — acceptable
+here since the features are genuinely related parts of one social graph, not independent
+bounded contexts. See [Project layout](#project-layout).
+
+**"Why doesn't a user have a display name — isn't that unusual for a social app?"**
+Deliberately trimmed for this lab's scope: `username` is already the one human-readable,
+unique identifier every other feature needs (it's what the feed and comments display,
+`@username`-style), so a separate `display_name` was redundant surface area — one more
+column, one more registration field, one more thing to keep in sync — without adding to
+what the lab actually grades (schema design, transactional follow, feed performance). Real
+products separate the two because a display name can change freely while a username often
+can't; a from-scratch lab project doesn't need that distinction to demonstrate the same
+database and transaction concepts.
+
+**"Why confirm the password on registration, and why only in the interactive menu?"**
+It's a data-entry safeguard, not a security control: typing a password blind (no visual
+feedback) is error-prone, so the menu asks twice and re-prompts both entries on a mismatch
+before anything is validated or hashed. It's UI-layer logic, not a domain rule — it lives in
+`cli/interactive.py`, not `UserService.register`, so `UserService` still has exactly one
+input contract (username, email, one already-confirmed password) regardless of which CLI
+surface calls it. The scriptable `register-user <username> <email> <password>` command skips
+it: a single command-line argument is already unambiguous, there's no "mistyped it and can't
+see what I typed" scenario to guard against there.

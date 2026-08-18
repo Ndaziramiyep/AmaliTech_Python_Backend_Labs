@@ -17,14 +17,13 @@ def test_create_user_returns_the_row_returned_by_the_insert(
         "user_id": 1,
         "username": "ada",
         "email": "ada@example.com",
-        "display_name": "Ada Lovelace",
         "created_at": sample_created_at,
     }
     repository = PostgresUserRepository(fake_connection_pool)
 
-    user = repository.create_user("ada", "ada@example.com", "hashed-password", "Ada Lovelace")
+    user = repository.create_user("ada", "ada@example.com", "hashed-password")
 
-    assert user == User(1, "ada", "ada@example.com", "Ada Lovelace", sample_created_at)
+    assert user == User(1, "ada", "ada@example.com", sample_created_at)
     executed_sql, executed_params = fake_cursor.execute.call_args.args
     assert "INSERT INTO users" in executed_sql
     assert executed_params["password_hash"] == "hashed-password"
@@ -48,7 +47,6 @@ def test_find_user_and_password_hash_by_username_returns_the_user_and_hash(
         "user_id": 42,
         "username": "grace",
         "email": "grace@example.com",
-        "display_name": "Grace Hopper",
         "created_at": sample_created_at,
         "password_hash": "deadbeef:cafef00d",
     }
@@ -58,7 +56,7 @@ def test_find_user_and_password_hash_by_username_returns_the_user_and_hash(
 
     assert result is not None
     user, password_hash = result
-    assert user == User(42, "grace", "grace@example.com", "Grace Hopper", sample_created_at)
+    assert user == User(42, "grace", "grace@example.com", sample_created_at)
     assert password_hash == "deadbeef:cafef00d"
     executed_sql, executed_params = fake_cursor.execute.call_args.args
     assert executed_params == {"username": "grace"}

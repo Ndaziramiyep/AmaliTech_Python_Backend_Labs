@@ -14,7 +14,7 @@ from tests.unit.services._fakes import FakeUserRepository
 
 
 def _seed_user(user_repository: FakeUserRepository, password: str) -> User:
-    user = User(1, "ada", "ada@example.com", "Ada Lovelace", datetime.now())
+    user = User(1, "ada", "ada@example.com", datetime.now())
     user_repository.users_by_id[user.user_id] = user
     user_repository.password_hashes_by_username[user.username] = hash_password(password)
     return user

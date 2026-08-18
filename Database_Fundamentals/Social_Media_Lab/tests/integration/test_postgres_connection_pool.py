@@ -43,8 +43,8 @@ def test_a_failed_transaction_is_rolled_back_and_does_not_persist() -> None:
     with pytest.raises(RuntimeError):
         with pool.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO users (username, email, password_hash, display_name) "
-                "VALUES ('ada', 'ada@example.com', 'hash', 'Ada Lovelace')"
+                "INSERT INTO users (username, email, password_hash) "
+                "VALUES ('ada', 'ada@example.com', 'hash')"
             )
             raise RuntimeError("simulated failure after the insert")
 

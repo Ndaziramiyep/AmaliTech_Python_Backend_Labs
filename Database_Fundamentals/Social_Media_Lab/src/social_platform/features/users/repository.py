@@ -14,7 +14,7 @@ from social_platform.features.users.model import User
 class UserRepository(Protocol):
     """Persistence contract for user accounts. Services depend on this, not on Postgres."""
 
-    def create_user(self, username: str, email: str, password_hash: str, display_name: str) -> User:
+    def create_user(self, username: str, email: str, password_hash: str) -> User:
         """Persist a new user and return the created entity."""
 
     def find_user_and_password_hash_by_username(self, username: str) -> tuple[User, str] | None:
@@ -27,21 +27,20 @@ class PostgresUserRepository:
     def __init__(self, connection_pool: PostgresConnectionPool) -> None:
         self._connection_pool = connection_pool
 
-    def create_user(self, username: str, email: str, password_hash: str, display_name: str) -> User:
+    def create_user(self, username: str, email: str, password_hash: str) -> User:
         """Insert a new user row and return the created entity."""
         try:
             with self._connection_pool.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO users (username, email, password_hash, display_name)
-                    VALUES (%(username)s, %(email)s, %(password_hash)s, %(display_name)s)
-                    RETURNING user_id, username, email, display_name, created_at
+                    INSERT INTO users (username, email, password_hash)
+                    VALUES (%(username)s, %(email)s, %(password_hash)s)
+                    RETURNING user_id, username, email, created_at
                     """,
                     {
                         "username": username,
                         "email": email,
                         "password_hash": password_hash,
-                        "display_name": display_name,
                     },
                 )
                 row = cursor.fetchone()
@@ -57,7 +56,7 @@ class PostgresUserRepository:
         with self._connection_pool.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT user_id, username, email, display_name, created_at, password_hash
+                SELECT user_id, username, email, created_at, password_hash
                 FROM users
                 WHERE username = %(username)s
                 """,
@@ -72,6 +71,5 @@ def _row_to_user(row: dict[str, Any]) -> User:
         user_id=row["user_id"],
         username=row["username"],
         email=row["email"],
-        display_name=row["display_name"],
         created_at=row["created_at"],
     )
