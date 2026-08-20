@@ -13,4 +13,5 @@ class User:
     user_id: int
     username: str
     email: str
+    bio: str | None
     created_at: datetime

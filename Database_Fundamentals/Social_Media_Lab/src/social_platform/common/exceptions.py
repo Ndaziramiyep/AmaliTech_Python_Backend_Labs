@@ -35,8 +35,24 @@ class PostNotFoundError(SocialPlatformError):
     """Raised when an operation references a post that does not exist."""
 
 
+class CommentNotFoundError(SocialPlatformError):
+    """Raised when an operation references a comment that does not exist."""
+
+
 class InvalidFollowOperationError(SocialPlatformError):
     """Raised when a user attempts to follow or unfollow themselves."""
+
+
+class InvalidCommentOperationError(SocialPlatformError):
+    """Raised when a reply's parent comment belongs to a different post."""
+
+
+class InvalidBioError(SocialPlatformError):
+    """Raised when a bio does not meet the platform's format requirements."""
+
+
+class OwnershipError(SocialPlatformError):
+    """Raised when a user attempts to modify a post or comment they do not own."""
 
 
 class ConnectionPoolExhaustedError(SocialPlatformError):

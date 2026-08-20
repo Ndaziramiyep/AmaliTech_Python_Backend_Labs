@@ -27,7 +27,9 @@ from social_platform.features.followers.repository import (
     FollowerRepository,
     PostgresFollowerRepository,
 )
+from social_platform.features.likes.repository import LikeRepository, PostgresLikeRepository
 from social_platform.features.posts.repository import PostgresPostRepository, PostRepository
+from social_platform.features.tags.repository import PostgresTagRepository, TagRepository
 from social_platform.features.trending.repository import (
     PostgresTrendingRepository,
     TrendingRepository,
@@ -42,8 +44,10 @@ class AppContext:
     connection_pool: PostgresConnectionPool
     user_repository: UserRepository
     post_repository: PostRepository
+    tag_repository: TagRepository
     comment_repository: CommentRepository
     follower_repository: FollowerRepository
+    like_repository: LikeRepository
     feed_repository: FeedRepository
     trending_repository: TrendingRepository
     timeline_cache: TimelineCache
@@ -61,8 +65,10 @@ def build_app_context() -> AppContext:
         connection_pool=connection_pool,
         user_repository=PostgresUserRepository(connection_pool),
         post_repository=PostgresPostRepository(connection_pool),
+        tag_repository=PostgresTagRepository(connection_pool),
         comment_repository=PostgresCommentRepository(connection_pool),
         follower_repository=PostgresFollowerRepository(connection_pool),
+        like_repository=PostgresLikeRepository(connection_pool),
         feed_repository=PostgresFeedRepository(connection_pool),
         trending_repository=PostgresTrendingRepository(connection_pool),
         timeline_cache=RedisTimelineCache(redis_client, settings.redis.timeline_cache_ttl_seconds),

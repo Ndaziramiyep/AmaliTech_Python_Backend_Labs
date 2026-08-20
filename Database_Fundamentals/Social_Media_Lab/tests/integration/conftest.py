@@ -55,6 +55,6 @@ def mongo_database() -> Database[dict[str, Any]]:
 def existing_users(connection_pool: PostgresConnectionPool) -> tuple[User, User]:
     """Two real user rows to exercise follow/unfollow/post/comment operations against."""
     user_repository = PostgresUserRepository(connection_pool)
-    first_user = user_repository.create_user("ada", "ada@example.com", "hash")
-    second_user = user_repository.create_user("grace", "grace@example.com", "hash")
+    first_user = user_repository.create_user("ada", "ada@example.com", "hash", None)
+    second_user = user_repository.create_user("grace", "grace@example.com", "hash", None)
     return first_user, second_user
