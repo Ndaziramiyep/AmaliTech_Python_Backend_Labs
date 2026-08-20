@@ -39,3 +39,38 @@ def test_register_rolls_back_and_leaves_no_side_effects_when_insert_fails():
     assert uow.committed is False
     assert uow.rolled_back is True
     assert logger.entries == []
+
+
+def test_find_by_username_returns_the_matching_registered_user():
+    repository = FakeUserRepository()
+    uow = FakeUnitOfWork()
+    logger = FakeActivityLogger()
+    service = UserService(lambda: uow, repository, logger)
+    service.register(username="ada", email="ada@example.com")
+
+    result = service.find_by_username("ada")
+
+    assert result is not None
+    assert result.username == "ada"
+
+
+def test_find_by_username_returns_none_when_no_such_user():
+    repository = FakeUserRepository()
+    uow = FakeUnitOfWork()
+    logger = FakeActivityLogger()
+    service = UserService(lambda: uow, repository, logger)
+
+    assert service.find_by_username("nobody") is None
+
+
+def test_list_users_returns_every_registered_user_in_order():
+    repository = FakeUserRepository()
+    uow = FakeUnitOfWork()
+    logger = FakeActivityLogger()
+    service = UserService(lambda: uow, repository, logger)
+    service.register(username="ada", email="ada@example.com")
+    service.register(username="bob", email="bob@example.com")
+
+    result = service.list_users()
+
+    assert [u.username for u in result] == ["ada", "bob"]

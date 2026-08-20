@@ -79,7 +79,6 @@ class FakePostRepository:
 
     def create(self, cursor: Any, post: Post) -> Post:
         self.received_cursor = cursor
-        self.calls.append(post)
         if self._raise_error is not None:
             raise self._raise_error
         created = Post(
@@ -90,6 +89,7 @@ class FakePostRepository:
             created_at=None,
         )
         self._next_id += 1
+        self.calls.append(created)
         return created
 
     def get_by_id(self, cursor: Any, post_id: int) -> Optional[Post]:
@@ -97,6 +97,10 @@ class FakePostRepository:
 
     def delete(self, cursor: Any, post_id: int) -> None:
         self.calls = [p for p in self.calls if p.id != post_id]
+
+    def list_recent(self, cursor: Any, limit: int) -> Sequence[Post]:
+        self.received_cursor = cursor
+        return list(reversed(self.calls))[:limit]
 
 
 class FakeCommentRepository:
@@ -135,13 +139,13 @@ class FakeUserRepository:
 
     def create(self, cursor: Any, user: User) -> User:
         self.received_cursor = cursor
-        self.calls.append(user)
         if self._raise_error is not None:
             raise self._raise_error
         created = User(
             id=self._next_id, username=user.username, email=user.email, created_at=None
         )
         self._next_id += 1
+        self.calls.append(created)
         return created
 
     def get_by_id(self, cursor: Any, user_id: int) -> Optional[User]:
@@ -149,6 +153,10 @@ class FakeUserRepository:
 
     def get_by_username(self, cursor: Any, username: str) -> Optional[User]:
         return next((u for u in self.calls if u.username == username), None)
+
+    def list_all(self, cursor: Any) -> Sequence[User]:
+        self.received_cursor = cursor
+        return list(self.calls)
 
 
 class FakeFeedRepository:

@@ -1,5 +1,5 @@
 """Data access for the users table. No business logic, no commits."""
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from social.domain.models import User
 
@@ -31,6 +31,10 @@ class PostgresUserRepository:
         )
         row = cursor.fetchone()
         return _row_to_user(row) if row else None
+
+    def list_all(self, cursor: Any) -> Sequence[User]:
+        cursor.execute("SELECT id, username, email, created_at FROM users ORDER BY id")
+        return [_row_to_user(row) for row in cursor.fetchall()]
 
 
 def _row_to_user(row: Any) -> User:

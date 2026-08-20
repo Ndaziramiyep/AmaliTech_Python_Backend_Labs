@@ -1,7 +1,7 @@
 """Creating a post is one atomic transaction; the activity log write happens
 only after that transaction has committed, outside the ACID boundary.
 """
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from social.domain.interfaces import ActivityLogger, PostRepository, UnitOfWork
 from social.domain.models import Post
@@ -34,3 +34,7 @@ class PostService:
             {"post_id": created.id, "author_id": author_id},
         )
         return created
+
+    def list_recent(self, limit: int = 20) -> Sequence[Post]:
+        with self._unit_of_work_factory() as uow:
+            return self._post_repository.list_recent(uow.cursor, limit)

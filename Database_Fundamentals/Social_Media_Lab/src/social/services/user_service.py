@@ -1,7 +1,7 @@
 """Registering a user is one atomic transaction; the activity log write
 happens only after that transaction has committed, outside the ACID boundary.
 """
-from typing import Callable
+from typing import Callable, Optional, Sequence
 
 from social.domain.interfaces import ActivityLogger, UnitOfWork, UserRepository
 from social.domain.models import User
@@ -29,3 +29,11 @@ class UserService:
             {"user_id": created.id, "username": username},
         )
         return created
+
+    def find_by_username(self, username: str) -> Optional[User]:
+        with self._unit_of_work_factory() as uow:
+            return self._user_repository.get_by_username(uow.cursor, username)
+
+    def list_users(self) -> Sequence[User]:
+        with self._unit_of_work_factory() as uow:
+            return self._user_repository.list_all(uow.cursor)
