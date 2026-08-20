@@ -21,15 +21,17 @@ pip install -e .
 python scripts/apply_migrations.py
 ```
 
-Copy `.env.example` to `.env` (or export the same variables) to point at
-anything other than the docker-compose defaults. Note the compose file maps
-Postgres/Redis/Mongo to host ports 5433/6380/27018 rather than their usual
-5432/6379/27017 — this sidesteps a common conflict where a locally
-installed Postgres, Redis-compatible (e.g. Memurai), or Mongo service is
-already bound to the standard port and silently intercepts the container's
-traffic on `localhost`.
+Copy `.env.example` to `.env` to point at anything other than the
+docker-compose defaults — it's loaded automatically, no manual `export`
+needed. Note the compose file maps Postgres/Redis/Mongo to host ports
+5433/6380/27018 rather than their usual 5432/6379/27017 — this sidesteps a
+common conflict where a locally installed Postgres, Redis-compatible (e.g.
+Memurai), or Mongo service is already bound to the standard port and
+silently intercepts the container's traffic on `localhost`.
 
 ## Running the CLI
+
+Either the installed console script:
 
 ```bash
 social-cli register alice alice@example.com
@@ -40,6 +42,10 @@ social-cli comment 1 1 "nice post"
 social-cli like 1 1
 social-cli timeline 1
 ```
+
+or `python main.py <command> ...` — the same CLI, but runnable straight from
+the repo root without `pip install -e .` (it puts `src/` on `sys.path`
+itself), e.g. `python main.py timeline 1`.
 
 ## Tests
 
