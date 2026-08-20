@@ -1,60 +1,55 @@
-"""Fixtures for integration tests: real PostgreSQL, Redis, and MongoDB via docker-compose.
+"""Integration fixtures against a real Postgres, per docker-compose.yml.
 
-Each repository call commits its own short transaction (correct for a connection-pooled
-service used by many independent CLI invocations), so per-test isolation here is achieved
-by truncating the relevant tables/collections before each test rather than by rolling back
-one enclosing transaction.
+Skips the whole integration suite if Postgres isn't reachable, rather than
+failing - these tests document real infrastructure behavior, they don't
+replace the fakes-based unit tests.
 """
-
-from __future__ import annotations
-
-from collections.abc import Iterator
-from typing import Any
-
 import pytest
-import redis
-from pymongo.database import Database
+import psycopg2
 
-from social_platform.common.mongo_client import create_mongo_database
-from social_platform.common.postgres_pool import PostgresConnectionPool
-from social_platform.common.redis_client import create_redis_client
-from social_platform.common.settings import ApplicationSettings
-from social_platform.features.users.model import User
-from social_platform.features.users.repository import PostgresUserRepository
+from social.config import load_settings
 
-_settings = ApplicationSettings.from_environment()
-
-
-@pytest.fixture
-def connection_pool() -> Iterator[PostgresConnectionPool]:
-    """A real PostgresConnectionPool, with all four tables truncated before each test."""
-    pool = PostgresConnectionPool(_settings.postgres)
-    with pool.cursor() as cursor:
-        cursor.execute("TRUNCATE followers, comments, posts, users RESTART IDENTITY CASCADE")
-    yield pool
-    pool.close_all_connections()
+MIGRATIONS = [
+    "001_create_users.sql",
+    "002_create_posts.sql",
+    "003_create_comments.sql",
+    "004_create_followers.sql",
+    "005_create_likes.sql",
+    "006_add_indexes.sql",
+]
 
 
-@pytest.fixture
-def redis_client() -> redis.Redis:
-    """A real Redis client, flushed before each test."""
-    client = create_redis_client(_settings.redis)
-    client.flushdb()
-    return client
+@pytest.fixture(scope="session")
+def postgres_dsn():
+    settings = load_settings()
+    try:
+        connection = psycopg2.connect(settings.postgres_dsn, connect_timeout=2)
+        connection.close()
+    except psycopg2.OperationalError as exc:
+        pytest.skip(f"Postgres not reachable at {settings.postgres_dsn}: {exc}")
+    return settings.postgres_dsn
 
 
 @pytest.fixture
-def mongo_database() -> Database[dict[str, Any]]:
-    """A real MongoDB database handle, with the activity log collection cleared."""
-    database = create_mongo_database(_settings.mongo)
-    database["activity_logs"].delete_many({})
-    return database
+def cursor(postgres_dsn):
+    import pathlib
 
+    connection = psycopg2.connect(postgres_dsn)
+    try:
+        with connection.cursor() as setup_cursor:
+            setup_cursor.execute(
+                "DROP TABLE IF EXISTS likes, comments, followers, posts, users CASCADE"
+            )
+        connection.commit()
 
-@pytest.fixture
-def existing_users(connection_pool: PostgresConnectionPool) -> tuple[User, User]:
-    """Two real user rows to exercise follow/unfollow/post/comment operations against."""
-    user_repository = PostgresUserRepository(connection_pool)
-    first_user = user_repository.create_user("ada", "ada@example.com", "hash", None)
-    second_user = user_repository.create_user("grace", "grace@example.com", "hash", None)
-    return first_user, second_user
+        migrations_dir = pathlib.Path(__file__).resolve().parent.parent.parent / "migrations"
+        for filename in MIGRATIONS:
+            with connection.cursor() as setup_cursor:
+                setup_cursor.execute((migrations_dir / filename).read_text())
+            connection.commit()
+
+        with connection.cursor() as test_cursor:
+            yield test_cursor
+        connection.rollback()
+    finally:
+        connection.close()
