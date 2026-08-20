@@ -3,7 +3,9 @@ the services and exposes them as CLI subcommands.
 """
 import argparse
 import json
+import sys
 
+from social.cli import interactive
 from social.config import load_settings
 from social.infrastructure.activity.mongo_activity_logger import MongoActivityLogger
 from social.infrastructure.cache.redis_client import RedisCache
@@ -48,6 +50,10 @@ class App:
 
 
 def main() -> None:
+    if len(sys.argv) == 1:
+        interactive.run(App())
+        return
+
     parser = argparse.ArgumentParser(prog="social-cli")
     sub = parser.add_subparsers(dest="command", required=True)
 

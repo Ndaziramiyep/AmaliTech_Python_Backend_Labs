@@ -51,3 +51,29 @@ def test_create_post_rolls_back_and_leaves_no_side_effects_when_insert_fails():
     assert uow.committed is False
     assert uow.rolled_back is True
     assert logger.entries == []
+
+
+def test_list_recent_returns_newest_first():
+    repository = FakePostRepository()
+    uow = FakeUnitOfWork()
+    logger = FakeActivityLogger()
+    service = PostService(lambda: uow, repository, logger)
+    service.create_post(author_id=1, body="first")
+    service.create_post(author_id=1, body="second")
+
+    result = service.list_recent()
+
+    assert [p.body for p in result] == ["second", "first"]
+
+
+def test_list_recent_respects_limit():
+    repository = FakePostRepository()
+    uow = FakeUnitOfWork()
+    logger = FakeActivityLogger()
+    service = PostService(lambda: uow, repository, logger)
+    for i in range(5):
+        service.create_post(author_id=1, body=f"post {i}")
+
+    result = service.list_recent(limit=2)
+
+    assert len(result) == 2
