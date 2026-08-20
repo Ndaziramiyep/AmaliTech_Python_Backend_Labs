@@ -7,8 +7,7 @@ services:
       POSTGRES_PASSWORD: social_platform
     ports:
       # Host port 5433 (not 5432) to avoid clashing with a native PostgreSQL install on
-      # the host. The container's internal port stays 5432; the `app` service below
-      # talks to it over the internal Docker network and is unaffected by this remap.
+      # the host. The container's internal port stays 5432.
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -42,36 +41,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
-  # The CLI app itself. Not started by plain `docker compose up` (it has no server
-  # loop, so it would just exit immediately with no terminal attached) — run it with
-  # `docker compose run --rm app` instead. See the README's Setup/Usage sections.
-  app:
-    build: .
-    profiles: ["cli"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: social_platform
-      POSTGRES_USER: social_platform
-      POSTGRES_PASSWORD: social_platform
-      POSTGRES_POOL_MIN_SIZE: "1"
-      POSTGRES_POOL_MAX_SIZE: "10"
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      REDIS_DB: "0"
-      TIMELINE_CACHE_TTL_SECONDS: "60"
-      MONGO_URI: mongodb://mongo:27017
-      MONGO_DATABASE_NAME: social_platform
-    stdin_open: true
-    tty: true
 
 volumes:
   postgres_data:

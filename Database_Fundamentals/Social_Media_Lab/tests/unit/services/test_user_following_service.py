@@ -89,3 +89,14 @@ def test_unfollow_user_reports_did_not_exist_without_logging_an_event(
 
     assert result is UnfollowResult.DID_NOT_EXIST
     assert fake_activity_log_repository.recorded_events == []
+
+
+def test_is_following_passes_through_to_the_repository(
+    fake_follower_repository: FakeFollowerRepository,
+    fake_activity_log_repository: FakeActivityLogRepository,
+) -> None:
+    """is_following reflects whatever the repository reports."""
+    fake_follower_repository.is_following_to_return = True
+    service = FollowService(fake_follower_repository, fake_activity_log_repository)
+
+    assert service.is_following(1, 2) is True

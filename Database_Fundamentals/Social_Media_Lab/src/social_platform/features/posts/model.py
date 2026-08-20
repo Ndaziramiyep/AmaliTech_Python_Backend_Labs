@@ -8,9 +8,12 @@ from typing import TypedDict
 
 
 class PostMetadata(TypedDict, total=False):
-    """Free-form JSONB payload stored alongside a post: tags and location."""
+    """Free-form JSONB payload stored alongside a post.
 
-    tags: list[str]
+    Tags are *not* here -- they're a proper many-to-many relationship (see
+    `social_platform.features.tags`), not a JSONB array.
+    """
+
     location: str
 
 

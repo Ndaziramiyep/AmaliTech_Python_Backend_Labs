@@ -60,6 +60,10 @@ class FollowService:
             )
         return result
 
+    def is_following(self, follower_user_id: int, followee_user_id: int) -> bool:
+        """Return whether `follower_user_id` currently follows `followee_user_id`."""
+        return self._follower_repository.is_following(follower_user_id, followee_user_id)
+
     def _log_activity_event(
         self, event_type: ActivityEventType, actor_user_id: int, target_user_id: int
     ) -> None:

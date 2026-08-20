@@ -9,7 +9,9 @@ from tests.unit.services._fakes import (
     FakeCommentRepository,
     FakeFeedRepository,
     FakeFollowerRepository,
+    FakeLikeRepository,
     FakePostRepository,
+    FakeTagRepository,
     FakeTimelineCache,
     FakeTrendingRepository,
     FakeUserRepository,
@@ -38,6 +40,18 @@ def fake_comment_repository() -> FakeCommentRepository:
 def fake_follower_repository() -> FakeFollowerRepository:
     """A fresh in-memory follower repository."""
     return FakeFollowerRepository()
+
+
+@pytest.fixture
+def fake_tag_repository() -> FakeTagRepository:
+    """A fresh in-memory tag repository."""
+    return FakeTagRepository()
+
+
+@pytest.fixture
+def fake_like_repository() -> FakeLikeRepository:
+    """A fresh in-memory like repository."""
+    return FakeLikeRepository()
 
 
 @pytest.fixture

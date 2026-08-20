@@ -33,7 +33,7 @@ def test_set_then_get_cached_feed_page_round_trips_every_field(
             author_user_id=2,
             author_username="ada",
             content="hello",
-            metadata={"tags": ["python"]},
+            metadata={"location": "Kigali"},
             created_at=sample_created_at,
         )
     ]

@@ -16,22 +16,25 @@ It supports the core actions you'd expect from any social app:
 
 | Action | What happens behind the scenes |
 | --- | --- |
-|   **Register / log in** | Your password is never stored in plain text — only a salted, scrambled ("hashed") version. |
-|   **Create a post** | Saved permanently with your name attached and a timestamp. |
+|   **Register / log in** | Your password is never stored in plain text — only a salted, scrambled ("hashed") version. Registration also takes an optional bio. |
+|   **Create, edit, or delete a post** | Saved permanently with your name attached and a timestamp; editing or deleting only ever touches your own posts. |
 |   **Follow / unfollow someone** | Recorded as an all-or-nothing operation — it either fully succeeds or fully fails, never half-happens. |
-|   **Comment on a post** | Linked back to both the post and the commenter. |
-|   **Like a post** | Logged as an activity event. |
+|   **Comment on a post, reply to a comment, or delete your own comment** | A reply is linked to its parent comment, forming a threaded sub-comment of arbitrary depth; deleting only ever touches your own comments. |
+|   **Like or unlike a post** | Recorded permanently — liking/unliking the same post twice is a safe no-op, not a duplicate or an error. |
 |   **View your feed** | A fast, paginated list of posts from everyone you follow, newest first. |
 |   **View trending posts** | Posts ranked by how much recent discussion (comments) they're getting. |
+|   **View a profile** | Your own or anyone else's — username, bio, and post/follower/following counts. |
+|   **Search for users** | Find an account by (partial) username. |
 
 Under the hood, it uses three specialized databases together, each doing the job it's best at:
 
-- **PostgreSQL** — the permanent system of record for users, posts, comments, and follow
-  relationships. If it's not in here, it didn't happen.
+- **PostgreSQL** — the permanent system of record for users, posts, tags, comments, follow
+  relationships, and likes. If it's not in here, it didn't happen.
 - **Redis** — a fast, temporary cache for feed pages, so re-loading your timeline doesn't hit
   the main database every single time.
 - **MongoDB** — a flexible activity log that records "who did what, when" (follows, likes,
-  posts, comments) for later analysis, without needing rigid table columns.
+  posts, comments) for later analysis. It stores *only* that log — never the facts
+  themselves, which always live in PostgreSQL.
 
 ## Tech stack
 
@@ -54,8 +57,7 @@ Once it's [set up](#setup), the easiest way to explore the app is the interactiv
 run it and answer the prompts, the same way you'd use any text-based menu:
 
 ```bash
-python main.py                      # local Python (Option B)
-docker compose run --rm app         # fully dockerized, no local Python needed (Option A)
+python main.py
 ```
 
 ```text
@@ -64,8 +66,26 @@ docker compose run --rm app         # fully dockerized, no local Python needed (
 3. Exit
 ```
 
-Register an account, log in, and you'll get a menu to create posts, follow people, comment,
-like posts, and view your feed — no command-line arguments to memorize.
+Register an account (with an optional bio) and log in to a short, seven-item top-level menu:
+
+```text
+1. Create a post
+2. Browse your feed
+3. Browse trending posts
+4. Find people
+5. My profile
+6. Logout
+7. Exit
+```
+
+Everything else lives one level down, reached by picking from a list rather than typing an
+id: browsing your feed or trending posts opens a numbered list of *actual* posts, and opening
+one shows exactly what you can do to it (comment, reply, like/unlike, and — if it's yours —
+edit or delete); commenting shows the post's real comment thread, replies included, and lets
+you reply to any comment in it, forming a threaded sub-comment; finding people searches real
+usernames and opens the one you pick to follow/unfollow; My profile shows your own posts to
+edit or delete, and your bio to update. No menu ever asks "enter a user id" or "enter a post
+id" — it shows you what exists and lets you choose.
 
 ## Contents
 
@@ -76,8 +96,10 @@ like posts, and view your feed — no command-line arguments to memorize.
 - [Usage](#usage)
 - [Project layout](#project-layout)
 - [Data model](#data-model)
+  - [Threaded comments](#threaded-comments)
 - [Architecture](#architecture)
 - [The transactional follow/unfollow contract](#the-transactional-followunfollow-contract)
+- [Ownership enforcement](#ownership-enforcement)
 - [Feed query performance](#feed-query-performance)
 - [Account security](#account-security)
 - [Error handling](#error-handling)
@@ -87,37 +109,9 @@ like posts, and view your feed — no command-line arguments to memorize.
 
 ## Setup
 
-There are two ways to run this: fully inside Docker (nothing but Docker needed on your
-machine), or locally with Docker only providing the databases. Both use the same
-[`docker-compose.yml`](docker-compose.yml) and [`sql/schema.sql`](sql/schema.sql).
-
-### Option A — fully dockerized (no local Python install needed)
-
-You only need [Docker](https://www.docker.com/products/docker-desktop/).
-
-```bash
-docker compose up -d                # starts PostgreSQL, Redis, and MongoDB
-docker compose run --rm app         # builds the app image (first run) and opens the menu
-```
-
-Every scriptable command works the same way, substituting `python main.py ...` for
-`docker compose run --rm app python main.py ...`:
-
-```bash
-docker compose run --rm app python main.py register-user <username> <email> <password>
-```
-
-The `app` service ([`Dockerfile`](Dockerfile)) is *not* started by plain `docker compose up` —
-it has no server loop, so with no terminal attached it would just exit immediately. It's
-defined with `profiles: ["cli"]` specifically so the database-only default stays unchanged;
-`docker compose run --rm app [...]` is how you actually use it, and allocates a real TTY so
-the interactive menu's prompts work correctly. Inside the `app` container, `POSTGRES_HOST`,
-`REDIS_HOST`, and `MONGO_URI` are already pointed at the other containers by service name
-(`postgres`, `redis`, `mongo`) — no `.env` file needed for this path.
-
-### Option B — local Python, dockerized databases only
-
-You'll need [Python 3.11+](https://www.python.org/downloads/) and Docker.
+Docker runs the three databases only (PostgreSQL, Redis, MongoDB); the app itself is a
+local Python process. You'll need [Python 3.11+](https://www.python.org/downloads/) and
+[Docker](https://www.docker.com/products/docker-desktop/).
 
 ```bash
 python -m venv .venv
@@ -128,12 +122,12 @@ pip install -r requirements.txt
 pip install -e .
 
 copy .env.example .env        # cp .env.example .env on macOS/Linux
-docker compose up -d          # starts PostgreSQL, Redis, and MongoDB (only — not the app)
+docker compose up -d          # starts PostgreSQL, Redis, and MongoDB
 ```
 
-Either way, `docker compose up -d` also creates all the database tables automatically the
-first time it runs, using [`sql/schema.sql`](sql/schema.sql). If you ever need to (re)apply
-that schema to an already-running database by hand:
+`docker compose up -d` also creates all the database tables automatically the first time
+it runs, using [`sql/schema.sql`](sql/schema.sql). If you ever need to (re)apply that
+schema to an already-running database by hand:
 
 ```bash
 psql -h localhost -p 5433 -U social_platform -d social_platform -f sql/schema.sql
@@ -143,9 +137,8 @@ psql -h localhost -p 5433 -U social_platform -d social_platform -f sql/schema.sq
 > with a locally installed PostgreSQL server, if you have one. The container's internal port
 > is still 5432; only the host-side mapping changed, so nothing inside Docker needed to change.
 
-Once setup is done, run `python main.py` (Option B) or `docker compose run --rm app`
-(Option A) and start exploring — see [Try it yourself](#try-it-yourself-no-coding-required)
-above.
+Once setup is done, run `python main.py` and start exploring — see
+[Try it yourself](#try-it-yourself-no-coding-required) above.
 
 > Always add `-d` to `docker compose up`. Without it, your terminal attaches to the live log
 > stream of every container — including MongoDB's healthcheck, which logs a connection every
@@ -157,24 +150,36 @@ Beyond the interactive menu, every action is also available as a direct, scripta
 useful for automation, testing, or demoing a single action without going through the menu.
 
 ```bash
-# via the unified entry point (Option B, local Python)
-python main.py register-user <username> <email> <password>
+# via the unified entry point
+python main.py register-user <username> <email> <password> --bio "hello there"
 python main.py create-post <author_user_id> "post content" --tag python --tag postgres --location Kigali
+python main.py update-post <post_id> <author_user_id> "edited content" --location Remote
+python main.py delete-post <post_id> <author_user_id>
 python main.py follow-user <follower_user_id> <followee_user_id>
 python main.py unfollow-user <follower_user_id> <followee_user_id>
 python main.py add-comment <post_id> <commenter_user_id> "nice post"
+python main.py add-comment <post_id> <commenter_user_id> "thanks!" --parent-comment-id <comment_id>
+python main.py delete-comment <comment_id> <commenter_user_id>
 python main.py like-post <actor_user_id> <post_id>
+python main.py unlike-post <actor_user_id> <post_id>
 python main.py get-user-feed <follower_user_id> --page 1
 python main.py get-trending-posts --since-hours 24 --limit 10
+python main.py get-user-profile <username>
+python main.py update-bio <user_id> "new bio"          # omit the bio argument to clear it
+python main.py search-users <query> --limit 10
 
 python scripts/analyze_feed_query.py   # diagnostic only; no main.py subcommand
-
-# equivalently, fully dockerized (Option A) — prefix any of the above with:
-docker compose run --rm app python main.py register-user <username> <email> <password>
 ```
 
-`follow-user` and `unfollow-user` are idempotent: running either twice in a row is a no-op
-success (`Follow result: already_exists`, `Unfollow result: did_not_exist`), never an error.
+`follow-user`/`unfollow-user` and `like-post`/`unlike-post` are idempotent: running either
+pair twice in a row is a no-op success (`Follow result: already_exists`, `Unfollow result:
+did_not_exist`, "You already liked this post.", "You hadn't liked this post."), never an
+error. `update-post`, `delete-post`, and `delete-comment` are ownership-scoped: they raise a
+clean `OwnershipError`/`PostNotFoundError`/`CommentNotFoundError` if `author_user_id` /
+`commenter_user_id` doesn't actually own the target — see [Ownership
+enforcement](#ownership-enforcement). `add-comment --parent-comment-id` makes a comment a
+reply to another comment on the *same* post; a parent id from a different post is rejected
+with `InvalidCommentOperationError` — see [Threaded comments](#threaded-comments).
 
 *For developers: every subcommand is defined in one place,
 [`src/social_platform/cli/commands.py`](src/social_platform/cli/commands.py) — an argparse
@@ -192,8 +197,7 @@ spread across separate top-level `models/`, `repositories/`, and `services/` tre
 
 ```text
 Social_Media_Lab/                 # this project — one lab inside a larger training monorepo
-├── docker-compose.yml            # PostgreSQL, Redis, MongoDB, and the app itself (profile "cli")
-├── Dockerfile                    # builds the `app` service — the CLI, fully containerized
+├── docker-compose.yml            # PostgreSQL, Redis, and MongoDB only — the app runs locally
 ├── sql/schema.sql                # 3NF DDL: tables, constraints, indexes
 ├── docs/er_diagram.md            # Mermaid ER diagram
 ├── scripts/analyze_feed_query.py # EXPLAIN ANALYZE diagnostic for the feed query
@@ -209,12 +213,14 @@ Social_Media_Lab/                 # this project — one lab inside a larger tra
 │   ├── features/
 │   │   ├── users/                # model.py + repository.py (Protocol + Postgres impl) + service.py
 │   │   ├── posts/                #   same shape: model, repository, service
-│   │   ├── comments/             #   same shape
+│   │   ├── tags/                 #   repository only — the posts<->tags many-to-many
+│   │   ├── comments/             #   same shape as users/posts
 │   │   ├── followers/            #   same shape — the transactional follow/unfollow service
+│   │   ├── likes/                #   model (LikeResult), repository, service — idempotent likes
 │   │   ├── feed/                 #   model, repository (the CTE query), cache (Redis), service
 │   │   ├── trending/             #   model, repository (the ranking query), service
-│   │   ├── engagement/           #   service only — likes have no table of their own
-│   │   └── activity_log/         #   model, repository (MongoDB)
+│   │   ├── profile/              #   model (UserProfile) + service — composes 3 other features
+│   │   └── activity_log/         #   model, repository (MongoDB) — logs only, no facts
 │   └── cli/
 │       ├── app_context.py        #   composition root: wires every concrete repository
 │       ├── commands.py           #   scriptable subcommands (argparse)
@@ -233,22 +239,29 @@ separate top-level `interfaces.py` file to jump to.
 
 ## Data model
 
-Four normalized (3NF) PostgreSQL tables carry every relationship except likes (see
-[Scope decisions](#scope-decisions)):
+Seven normalized (3NF) PostgreSQL tables carry every relationship — including likes and
+tags, both of which are real many-to-many relationships rather than JSONB arrays or
+Mongo-only facts:
 
 ```mermaid
 erDiagram
     USERS ||--o{ POSTS : authors
     USERS ||--o{ COMMENTS : writes
     POSTS ||--o{ COMMENTS : receives
+    COMMENTS ||--o{ COMMENTS : "replies to (parent_comment_id)"
     USERS ||--o{ FOLLOWERS : "follows (follower_user_id)"
     USERS ||--o{ FOLLOWERS : "is followed by (followee_user_id)"
+    USERS ||--o{ LIKES : likes
+    POSTS ||--o{ LIKES : "is liked by"
+    POSTS ||--o{ POST_TAGS : "is tagged with"
+    TAGS ||--o{ POST_TAGS : "tags posts"
 
     USERS {
         bigint user_id PK
         varchar username UK
         varchar email UK
         text password_hash
+        varchar bio
         timestamptz created_at
     }
 
@@ -264,6 +277,7 @@ erDiagram
         bigint comment_id PK
         bigint post_id FK
         bigint commenter_user_id FK
+        bigint parent_comment_id FK
         text content
         timestamptz created_at
     }
@@ -273,22 +287,82 @@ erDiagram
         bigint followee_user_id PK,FK
         timestamptz created_at
     }
+
+    LIKES {
+        bigint post_id PK,FK
+        bigint user_id PK,FK
+        timestamptz created_at
+    }
+
+    TAGS {
+        bigint tag_id PK
+        varchar name UK
+    }
+
+    POST_TAGS {
+        bigint post_id PK,FK
+        bigint tag_id PK,FK
+    }
 ```
 
-`followers` is a many-to-many self-relationship on `users`: each row means
-`follower_user_id` follows `followee_user_id`. The composite primary key
-`(follower_user_id, followee_user_id)` prevents duplicate follow edges and doubles as
-a B-tree index for "who does this user follow"; `idx_followers_followee_follower`
-covers the reverse "who follows this user" lookup. All foreign keys cascade on delete.
-(Full diagram source: [`docs/er_diagram.md`](docs/er_diagram.md).)
+`followers` and `likes` share the same idempotency pattern: a composite primary key
+(`(follower_user_id, followee_user_id)` / `(post_id, user_id)`) doubles as both the
+uniqueness constraint and the natural lookup index, so `INSERT ... ON CONFLICT DO
+NOTHING` makes a repeat follow or a repeat like a safe no-op instead of a duplicate row
+or a raised error. `idx_followers_followee_follower` / `idx_likes_user_id` cover each
+table's reverse lookup direction.
+
+### Threaded comments
+
+`comments.parent_comment_id` is a nullable, self-referencing foreign key
+(`ON DELETE CASCADE`): NULL means a top-level comment on a post, and a non-NULL value
+means a reply to another comment on that *same* post — the classic adjacency-list model
+for a tree stored in a normal relational table, no separate `replies` table needed.
+Deleting a comment cascades to delete every reply beneath it, at any depth.
+
+Reading a whole thread in display order —parent immediately followed by its replies,
+before any later sibling — is a recursive CTE
+([`PostgresCommentRepository.find_comment_thread_for_post`](src/social_platform/features/comments/repository.py)):
+it starts from the post's top-level comments, walks one `parent_comment_id` hop per
+recursive step, and builds a `bigint[]` sort path (`[3]`, `[3, 7]`, `[3, 7, 9]`, `[4]`, ...)
+at each step so a plain `ORDER BY sort_path` yields correct depth-first order regardless of
+how deep any one reply chain goes — the same "let array/tuple comparison do the sorting"
+trick, applied to a tree instead of a flat list. `CommentService.create_comment` validates
+that a reply's parent actually belongs to the post it's replying within *before* the insert
+(`InvalidCommentOperationError` if not) — the foreign key alone can't express that
+same-post constraint, so the service layer checks it explicitly, the same "service checks
+first" discipline used for [ownership enforcement](#ownership-enforcement).
+
+`tags` and `post_tags` form the many-to-many between posts and tags — a post can carry
+several tags, a tag can apply to many posts — normalized as real rows specifically so
+"which posts use this tag" is an ordinary indexed join (`idx_post_tags_tag_id`) instead
+of scanning every post's JSONB metadata. Only `location` remains in `posts.metadata`
+now, since it's a single free-form value with no cross-post relationship worth
+normalizing.
+
+`bio` is a nullable, at-most-280-character `VARCHAR` — a user's freeform "about me" text,
+validated by `validate_bio` ([`common/validation.py`](src/social_platform/common/validation.py))
+and settable at registration or later via `UserService.update_bio`. There is no separate
+`profiles` table: a user's public profile (`UserProfile`,
+[`features/profile/model.py`](src/social_platform/features/profile/model.py)) is composed on
+read from `users.bio` plus a post count, follower count, and following count queried from
+`posts` and `followers` — see [Architecture](#architecture).
+
+All foreign keys cascade on delete. (Full diagram source: [`docs/er_diagram.md`](docs/er_diagram.md).)
 
 ## Architecture
 
 Dependency direction is strictly inward, per feature: `cli` → `features/*/service.py` →
 `features/*/repository.py` (a `Protocol`) ← its own `Postgres*`/`Redis*`/`Mongo*`
 implementation → `common/`. A feature may depend on another feature's repository or model
-(e.g. `engagement` reads `posts`' `PostRepository` to check a post exists) but never
-reaches into another feature's internals beyond its public `model.py`/`repository.py`.
+(e.g. `likes` reads `posts`' `PostRepository` to check a post exists before liking it) but
+never reaches into another feature's internals beyond its public `model.py`/`repository.py`.
+`profile` is the extreme case of this: it owns no table and no repository of its own —
+`ProfileService.get_profile`
+([source](src/social_platform/features/profile/service.py)) takes `UserRepository`,
+`PostRepository`, and `FollowerRepository` as constructor dependencies and composes one
+`UserProfile` from all three on every read, rather than maintaining a denormalized
+`profiles` table that could drift out of sync with the data it summarizes.
 
 - **`common/`** — settings, pooled connections, password hashing, validation, and the
   exception hierarchy. Nothing feature-specific lives here, and nothing here imports from
@@ -346,6 +420,34 @@ and
 [`tests/integration/test_postgres_connection_pool.py`](tests/integration/test_postgres_connection_pool.py) —
 a mocked cursor would happily "succeed" on a self-follow insert that only a real `CHECK`
 constraint rejects.
+
+## Ownership enforcement
+
+`update_post`, `delete_post` ([`features/posts/service.py`](src/social_platform/features/posts/service.py))
+and `delete_comment` ([`features/comments/service.py`](src/social_platform/features/comments/service.py))
+all follow the same two-layer pattern:
+
+1. **The service checks ownership first**, for a clean, specific domain error: it looks the
+   post/comment up by id, raises `PostNotFoundError`/`CommentNotFoundError` if it doesn't
+   exist at all, then raises `OwnershipError` if it exists but belongs to someone else. This
+   runs *before* any write, and is what a caller actually sees.
+2. **The repository's write is separately scoped to the owner as defense in depth** — e.g.
+   `PostgresPostRepository.update_post`
+   ([source](src/social_platform/features/posts/repository.py)) runs `UPDATE posts SET ...
+   WHERE post_id = %(post_id)s AND author_user_id = %(author_user_id)s`, so even a future
+   caller that skips the service-layer check (a bug, not a supported path) still cannot
+   mutate another user's row — the query itself is the last line of defense, the same
+   "service checks first, the query itself backstops it" pattern used for the
+   [follow/unfollow contract](#the-transactional-followunfollow-contract) above. A repository-level
+   ownership miss can only report `PostNotFoundError`/`CommentNotFoundError` (zero rows
+   matched), since the query has no way to distinguish "doesn't exist" from "exists but isn't
+   yours" — that distinction is exactly what the service-layer check exists to provide.
+
+`unlike_post` ([`features/likes/service.py`](src/social_platform/features/likes/service.py))
+needs no ownership check at all: a like's primary key is `(post_id, user_id)`, so "delete my
+own like" is inherently scoped by the caller's own user id, and removing a like that was
+never there simply returns `UnlikeResult.DID_NOT_EXIST` rather than an error — the same
+idempotent-by-primary-key pattern as `follow`/`unfollow`.
 
 ## Feed query performance
 
@@ -406,6 +508,15 @@ Passwords are never stored as typed. Registration and login both go through
   `UserService.register`. The scriptable `register-user` command takes a single password
   argument with no confirmation step, since there's no "type it twice" in a one-shot command
   line.
+- **Hidden terminal input for both login and registration.** The interactive menu reads
+  every password field — login, the password prompt, and the confirmation prompt — through
+  a separate `password_input_function` (`getpass.getpass` by default) rather than the
+  ordinary `input_function` used for everything else, so typed characters never echo to the
+  screen ([`run_interactive_session`](src/social_platform/cli/interactive.py)). `getpass`
+  needs a real terminal; if none is attached (e.g. piped input in a test), it falls back to
+  a visible prompt with a warning instead of crashing. The scriptable `register-user`
+  command can't offer this — the password is already visible in the command you typed, or
+  in your shell history, before the program ever runs.
 
 ## Error handling
 
@@ -416,6 +527,9 @@ Passwords are never stored as typed. Registration and login both go through
 | `UserAlreadyExistsError` | Registration is attempted with a username or email already taken. |
 | `WeakPasswordError` | A new password fails the strength policy above. |
 | `PostNotFoundError` | An operation references a post id that does not exist. |
+| `CommentNotFoundError` | An operation references a comment id that does not exist. |
+| `OwnershipError` | A user attempts to edit/delete a post or comment they don't own. |
+| `InvalidBioError` | A bio exceeds the maximum length (280 characters). |
 | `ConnectionPoolExhaustedError` | No PostgreSQL connection is available from the pool. |
 
 All defined in [`common/exceptions.py`](src/social_platform/common/exceptions.py).
@@ -430,23 +544,62 @@ reach the terminal.
   `GROUP BY` CTE), not a Postgres/MongoDB score merge. The lab's "complex queries" requirement
   is CTE+JOIN (feed) and `ROW_NUMBER()` (pagination) — both already demonstrated by the feed
   query — and MongoDB is already exercised independently by activity logging on every
-  follow/post/comment/like action plus the Mongo-only `like_post` write path. A cross-store
-  merge algorithm would add real risk for a lab graded on feed performance and transactional
-  correctness, not trending.
-- **Likes have no PostgreSQL table.** Per the lab's data-store split ("MongoDB: store activity
-  logs (likes, follows, etc.)"), a like is recorded only as a MongoDB activity-log document via
-  `EngagementService.like_post` — there is no relational `likes` table to keep in sync, and no
-  `features/engagement/model.py` or `repository.py` either, since there's no data of its own
-  to define.
-- **No cross-store two-phase commit.** The MongoDB activity-log write for follows/posts/comments
-  is best-effort and happens after the PostgreSQL transaction commits (see
-  [above](#the-transactional-followunfollow-contract)). PostgreSQL is the single source of
-  truth; a lost activity-log write is logged but never rolls back an already-committed action.
+  follow/post/comment/like action. A cross-store merge algorithm would add real risk for a
+  lab graded on feed performance and transactional correctness, not trending.
+- **MongoDB stores only the activity log, never the facts themselves.** Likes, follows,
+  posts, and comments are all real PostgreSQL rows; MongoDB's `activity_logs` collection
+  separately records that each of those events *happened* (who, what, when), purely for
+  a write-heavy, schema-flexible audit trail. `LikeService.like_post`
+  ([source](src/social_platform/features/likes/service.py)) is the clearest example: it
+  writes the like to PostgreSQL's `likes` table first (the fact), then best-effort logs a
+  `post_liked` event to Mongo (the log) — never the other way around, and never *only* to
+  Mongo.
+- **Likes use the same idempotency pattern as follows.** `PostgresLikeRepository.create_like`
+  ([source](src/social_platform/features/likes/repository.py)) is `INSERT ... ON CONFLICT
+  (post_id, user_id) DO NOTHING`, exactly like `PostgresFollowerRepository` — liking the same
+  post twice returns `LikeResult.ALREADY_EXISTS` instead of a duplicate row or a raised error.
+- **Tags are a normalized many-to-many, not a JSONB array.** `tags` and `post_tags`
+  ([schema](sql/schema.sql)) exist specifically so "how many posts use this tag" and "which
+  posts have this tag" are ordinary indexed joins rather than a scan of every post's JSONB
+  metadata. `PostService.create_post` get-or-creates each tag by name and links it to the
+  new post in one transaction ([source](src/social_platform/features/posts/service.py)).
+  Only `location` remains as JSONB metadata now — a single free-form value with no
+  cross-post relationship worth normalizing.
+- **No cross-store two-phase commit.** The MongoDB activity-log write for
+  follows/posts/comments/likes is best-effort and happens after the PostgreSQL transaction
+  commits (see [above](#the-transactional-followunfollow-contract)). PostgreSQL is the
+  single source of truth; a lost activity-log write is logged but never rolls back an
+  already-committed action.
+- **A user's profile is composed on read, not stored as its own table.** `ProfileService`
+  ([source](src/social_platform/features/profile/service.py)) queries `users`, `posts`, and
+  `followers` on every `get_profile` call instead of maintaining a denormalized `profiles`
+  row that would need updating on every post/follow and could drift out of sync. Profile
+  reads are far rarer than posts/follows are written, so the extra query cost at read time is
+  the right trade-off over keeping a duplicate, eventually-stale summary in sync on every write.
+- **Ownership is checked in the service layer, then re-enforced in the repository's WHERE
+  clause.** `update_post`, `delete_post`, and `delete_comment` all look the target up first
+  (for a specific `OwnershipError` vs. `PostNotFoundError`/`CommentNotFoundError`), then issue
+  a write scoped to the same owner regardless — see [Ownership
+  enforcement](#ownership-enforcement). This is defense in depth, not redundancy for its own
+  sake: it's the same "service checks first, the query backstops it" discipline already used
+  for self-follow rejection.
 - **The Redis timeline cache uses a fixed TTL, not write-time invalidation.** Creating a post
   does not proactively invalidate every follower's cached feed page (that "fan-out on write"
   approach breaks down for high-follower-count accounts). Instead, cached pages simply expire
   after `TIMELINE_CACHE_TTL_SECONDS` (default 60s) — a deliberate "fan-out on read, short TTL"
   trade-off favoring high-read-workload performance.
+- **Comment replies are a self-referencing adjacency list, not a separate `replies` table
+  or a fixed-depth schema.** A `replies` table (or a `comments` table with `reply_to_1`,
+  `reply_to_2`, ... columns) would cap nesting depth by design; `parent_comment_id` pointing
+  back into `comments` supports a thread of any depth with one column, at the cost of needing
+  a recursive query to read it back in order — see [Threaded comments](#threaded-comments).
+- **The interactive menu is a short top-level menu that drills down, never a raw-id prompt.**
+  Browsing a feed, a comment thread, or a user search all present a numbered list of what
+  actually exists and let the actor pick from it, rather than asking them to already know
+  (or go look up) a post/comment/user id. This trades a few extra list-then-pick round trips
+  for an interface that matches how a real social app's UI works — you tap what you see, you
+  don't type an id — and keeps the scriptable `commands.py` subcommands (still directly
+  id-based, for automation and tests) entirely separate from that interactive experience.
 
 ## Testing, formatting, and type-checking
 
@@ -466,11 +619,11 @@ Short answers you can expand on live, each backed by a section above.
 **"Why three different databases instead of just one?"**
 Each store is doing the job it's actually good at, not spread thin for its own sake:
 PostgreSQL is the single source of truth needing ACID transactions and foreign-key
-integrity (users, posts, comments, follows); Redis is a disposable read-through cache
-sitting in front of the one query that's read far more than it's written (the feed);
-MongoDB is a schema-flexible, append-only event log for activity that's write-heavy,
-never updated, and doesn't need relational integrity (likes, follow/post/comment
-events). See [Scope decisions](#scope-decisions).
+integrity (users, posts, tags, comments, follows, likes); Redis is a disposable
+read-through cache sitting in front of the one query that's read far more than it's
+written (the feed); MongoDB is a schema-flexible, append-only event log recording that
+each of those actions *happened* (who, what, when) — it never stores the fact itself,
+only the log entry. See [Scope decisions](#scope-decisions).
 
 **"How do you keep Postgres and MongoDB consistent when a follow also logs an activity event?"**
 Deliberately, they aren't kept consistent via 2PC — Postgres is authoritative. The Mongo
@@ -527,7 +680,7 @@ one class per use case — but a layer-first layout means understanding "how fol
 requires jumping across three unrelated top-level folders. Grouping `followers/model.py`,
 `repository.py`, and `service.py` together means one folder answers one question. The
 trade-off is explicit: a feature occasionally imports another feature's repository (e.g.
-`engagement` reads `posts`' `PostRepository`) rather than staying fully isolated — acceptable
+`likes` reads `posts`' `PostRepository`) rather than staying fully isolated — acceptable
 here since the features are genuinely related parts of one social graph, not independent
 bounded contexts. See [Project layout](#project-layout).
 
@@ -550,3 +703,73 @@ input contract (username, email, one already-confirmed password) regardless of w
 surface calls it. The scriptable `register-user <username> <email> <password>` command skips
 it: a single command-line argument is already unambiguous, there's no "mistyped it and can't
 see what I typed" scenario to guard against there.
+
+**"How do you keep passwords from echoing to the terminal, and how do you test that?"**
+`run_interactive_session` takes two separate input functions: `input_function` for
+ordinary prompts, and `password_input_function` (defaulting to `getpass.getpass`) for
+every password field — login, the new-password prompt, and the confirmation prompt. They're
+threaded through as two distinct parameters specifically so tests can prove the *wiring* is
+correct without needing a real terminal: a unit test supplies two different fake input
+sources and asserts the password ones are drawn from the dedicated channel, not the general
+one (`test_password_prompts_use_the_dedicated_hidden_input_channel`). Testing real terminal
+echo-suppression itself would be testing Python's own `getpass` module, which is already
+part of the standard library and doesn't need re-verifying here.
+
+**"Why does `Profile` compose three repositories instead of having its own table?"**
+Because a profile isn't a fact of its own — it's a *view* over facts that already live in
+`users`, `posts`, and `followers`. Storing it separately (a `profiles` table with cached
+post/follower/following counts) would mean updating that row on every post, follow, and
+unfollow, and risking it drifting out of sync if any one of those updates is missed.
+`ProfileService.get_profile` composes it fresh on every read instead — more expensive per
+read, but reads are far less frequent than the writes that would otherwise need to keep it
+in sync, and it can never be wrong. See
+[Architecture](#architecture) and [Scope decisions](#scope-decisions).
+
+**"Why check ownership in both the service and the repository — isn't that redundant?"**
+They check different things at different points, not the same thing twice. The service
+checks first so a caller gets a specific, useful error (`OwnershipError` — "this exists but
+isn't yours" — vs. `PostNotFoundError` — "this doesn't exist at all"). The repository's
+`UPDATE ... WHERE post_id = ... AND author_user_id = ...` is a structurally different
+guarantee: even if some future code path skipped the service check entirely, the write
+itself is physically incapable of touching another user's row. It's the same "service
+checks first, the query is the last line of defense" pattern the follow/unfollow contract
+already uses for self-follow rejection — proven the same way: a mocked repository would
+happily let an unscoped `UPDATE` through, only a real `WHERE` clause against real data
+proves it. See [Ownership enforcement](#ownership-enforcement).
+
+**"Why are likes and tags relational tables instead of staying in MongoDB / a JSONB array?"**
+Both were changed to demonstrate the same normalization principles the schema already uses
+elsewhere, applied to data that's genuinely relational: a like is a fact connecting exactly
+one user to exactly one post (a textbook many-to-many, same shape as `followers`), and a tag
+applies to many posts while a post can carry many tags (another many-to-many, via the
+`post_tags` join table). Keeping likes Mongo-only, or tags as a JSONB array, would work, but
+neither supports an indexed join — "how many people liked this post" or "which posts use
+this tag" would mean scanning documents/arrays instead of an ordinary `JOIN`. The bar for
+"does this belong in MongoDB" became: is it a fact with its own identity and constraints
+(→ PostgreSQL), or an unbounded, schema-flexible record that something else happened
+(→ MongoDB)? Likes and tags are clearly the former. See
+[Scope decisions](#scope-decisions) and [Data model](#data-model).
+
+**"How do threaded replies work — why not a separate `replies` table?"**
+`comments.parent_comment_id` is a nullable self-reference: NULL is a top-level comment,
+non-NULL is a reply to another comment, at any depth — the standard adjacency-list way to
+store a tree in one relational table, rather than capping nesting depth with a fixed set of
+columns or duplicating the schema into a second `replies` table. The cost of that choice is
+reading it back: a flat table has no built-in order, so
+`PostgresCommentRepository.find_comment_thread_for_post` uses a recursive CTE that walks one
+`parent_comment_id` hop per step and accumulates a `bigint[]` path (`[3]`, then `[3, 7]`,
+then `[3, 7, 9]`) so a single `ORDER BY sort_path` produces correct depth-first order —
+parent, then its replies, then the next sibling — no matter how deep any one thread goes.
+See [Threaded comments](#threaded-comments).
+
+**"Why does the interactive menu browse-and-pick instead of asking for an id, and why
+doesn't that same redesign touch the scriptable commands?"**
+Because the two surfaces serve different callers with different needs. A human at the menu
+doesn't know a post's or a comment's internal id and shouldn't have to go find one — showing
+them their feed, a comment thread, or a search's matches and letting them pick by number
+matches how an actual social app works (you tap what's on screen). A script or a test, on
+the other hand, already has the id it wants to act on — that's the whole point of automating
+it — so making `commands.py` browse-and-pick too would only add friction with no benefit.
+Keeping them as two independent CLI surfaces over the same services (`cli/interactive.py`
+vs. `cli/commands.py`) means each stays optimized for its actual caller instead of
+compromising to serve both. See [Try it yourself](#try-it-yourself-no-coding-required).

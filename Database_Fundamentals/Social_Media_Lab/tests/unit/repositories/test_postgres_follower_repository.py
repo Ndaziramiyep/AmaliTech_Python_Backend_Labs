@@ -61,3 +61,43 @@ def test_delete_follow_relationship_returns_did_not_exist_when_no_row_matches(
     repository = PostgresFollowerRepository(fake_connection_pool)
 
     assert repository.delete_follow_relationship(1, 2) is UnfollowResult.DID_NOT_EXIST
+
+
+def test_count_followers_returns_the_count(
+    fake_connection_pool: MagicMock, fake_cursor: MagicMock
+) -> None:
+    """The follower count comes straight from the query's single row."""
+    fake_cursor.fetchone.return_value = {"follower_count": 4}
+    repository = PostgresFollowerRepository(fake_connection_pool)
+
+    assert repository.count_followers(1) == 4
+
+
+def test_count_following_returns_the_count(
+    fake_connection_pool: MagicMock, fake_cursor: MagicMock
+) -> None:
+    """The following count comes straight from the query's single row."""
+    fake_cursor.fetchone.return_value = {"following_count": 7}
+    repository = PostgresFollowerRepository(fake_connection_pool)
+
+    assert repository.count_following(1) == 7
+
+
+def test_is_following_returns_true_when_a_row_matches(
+    fake_connection_pool: MagicMock, fake_cursor: MagicMock
+) -> None:
+    """A matching follow-edge row reports True."""
+    fake_cursor.fetchone.return_value = {"?column?": 1}
+    repository = PostgresFollowerRepository(fake_connection_pool)
+
+    assert repository.is_following(1, 2) is True
+
+
+def test_is_following_returns_false_when_no_row_matches(
+    fake_connection_pool: MagicMock, fake_cursor: MagicMock
+) -> None:
+    """No matching follow-edge row reports False, not an error."""
+    fake_cursor.fetchone.return_value = None
+    repository = PostgresFollowerRepository(fake_connection_pool)
+
+    assert repository.is_following(1, 2) is False

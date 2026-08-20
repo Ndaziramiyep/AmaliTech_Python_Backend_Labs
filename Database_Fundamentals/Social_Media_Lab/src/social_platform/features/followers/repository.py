@@ -26,6 +26,15 @@ class FollowerRepository(Protocol):
     ) -> UnfollowResult:
         """Remove a follow edge, or report that it did not exist."""
 
+    def count_followers(self, user_id: int) -> int:
+        """Return how many users follow `user_id`."""
+
+    def count_following(self, user_id: int) -> int:
+        """Return how many users `user_id` follows."""
+
+    def is_following(self, follower_user_id: int, followee_user_id: int) -> bool:
+        """Return whether `follower_user_id` currently follows `followee_user_id`."""
+
 
 class PostgresFollowerRepository:
     """Implements `FollowerRepository` against PostgreSQL via a pooled connection.
@@ -77,3 +86,45 @@ class PostgresFollowerRepository:
             )
             rows_deleted = cursor.rowcount
         return UnfollowResult.REMOVED if rows_deleted else UnfollowResult.DID_NOT_EXIST
+
+    def count_followers(self, user_id: int) -> int:
+        """Return how many users follow `user_id`."""
+        with self._connection_pool.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS follower_count FROM followers
+                WHERE followee_user_id = %(user_id)s
+                """,
+                {"user_id": user_id},
+            )
+            row = cursor.fetchone()
+        assert row is not None  # COUNT(*) always yields exactly one row
+        return int(row["follower_count"])
+
+    def count_following(self, user_id: int) -> int:
+        """Return how many users `user_id` follows."""
+        with self._connection_pool.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS following_count FROM followers
+                WHERE follower_user_id = %(user_id)s
+                """,
+                {"user_id": user_id},
+            )
+            row = cursor.fetchone()
+        assert row is not None  # COUNT(*) always yields exactly one row
+        return int(row["following_count"])
+
+    def is_following(self, follower_user_id: int, followee_user_id: int) -> bool:
+        """Return whether `follower_user_id` currently follows `followee_user_id`."""
+        with self._connection_pool.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1 FROM followers
+                WHERE follower_user_id = %(follower_user_id)s
+                  AND followee_user_id = %(followee_user_id)s
+                """,
+                {"follower_user_id": follower_user_id, "followee_user_id": followee_user_id},
+            )
+            row = cursor.fetchone()
+        return row is not None
