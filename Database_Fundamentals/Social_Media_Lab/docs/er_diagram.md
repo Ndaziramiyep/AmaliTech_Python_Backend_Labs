@@ -3,7 +3,6 @@
 ```mermaid
 erDiagram
     USERS ||--o{ POSTS : authors
-    USERS ||--o{ COMMENTS : writes
     POSTS ||--o{ COMMENTS : receives
     COMMENTS ||--o{ COMMENTS : "replies to (parent_comment_id)"
     USERS ||--o{ FOLLOWERS : "follows (follower_user_id)"
