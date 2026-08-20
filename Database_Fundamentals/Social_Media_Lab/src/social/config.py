@@ -1,6 +1,15 @@
-"""Single source of truth for runtime settings, read from the environment."""
+"""Single source of truth for runtime settings, read from the environment.
+
+Loads a .env file from the current directory (if present) before reading,
+so `python main.py ...` picks up local overrides without the caller having
+to export them manually.
+"""
 import os
 from dataclasses import dataclass
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @dataclass(frozen=True, slots=True)
