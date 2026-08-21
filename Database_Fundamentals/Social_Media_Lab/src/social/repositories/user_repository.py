@@ -4,18 +4,18 @@ from typing import Any, Optional, Sequence
 from social.domain.models import User
 
 
-_COLUMNS = "id, username, email, password_hash, created_at"
+_COLUMNS = "id, username, email, password_hash, created_at, full_name, bio, is_active"
 
 
 class PostgresUserRepository:
     def create(self, cursor: Any, user: User) -> User:
         cursor.execute(
             f"""
-            INSERT INTO users (username, email, password_hash)
-            VALUES (%s, %s, %s)
+            INSERT INTO users (username, email, password_hash, full_name, bio)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING {_COLUMNS}
             """,
-            (user.username, user.email, user.password_hash),
+            (user.username, user.email, user.password_hash, user.full_name, user.bio),
         )
         return _row_to_user(cursor.fetchone())
 
@@ -47,13 +47,30 @@ class PostgresUserRepository:
         cursor.execute(f"SELECT {_COLUMNS} FROM users ORDER BY id")
         return [_row_to_user(row) for row in cursor.fetchall()]
 
+    def update_profile(
+        self, cursor: Any, user_id: int, full_name: str, bio: str
+    ) -> Optional[User]:
+        cursor.execute(
+            f"""
+            UPDATE users SET full_name = %s, bio = %s
+            WHERE id = %s
+            RETURNING {_COLUMNS}
+            """,
+            (full_name, bio, user_id),
+        )
+        row = cursor.fetchone()
+        return _row_to_user(row) if row else None
+
 
 def _row_to_user(row: Any) -> User:
-    user_id, username, email, password_hash, created_at = row
+    user_id, username, email, password_hash, created_at, full_name, bio, is_active = row
     return User(
         id=user_id,
         username=username,
         email=email,
         password_hash=password_hash,
         created_at=created_at,
+        full_name=full_name,
+        bio=bio,
+        is_active=is_active,
     )

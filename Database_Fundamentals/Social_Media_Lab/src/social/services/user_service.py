@@ -19,9 +19,16 @@ class UserService:
         self._user_repository = user_repository
         self._activity_logger = activity_logger
 
-    def register(self, username: str, email: str, password: str) -> User:
+    def register(
+        self, username: str, email: str, password: str, full_name: str = "", bio: str = ""
+    ) -> User:
         draft = User(
-            id=None, username=username, email=email, password_hash=hash_password(password)
+            id=None,
+            username=username,
+            email=email,
+            password_hash=hash_password(password),
+            full_name=full_name,
+            bio=bio,
         )
         with self._unit_of_work_factory() as uow:
             created = self._user_repository.create(uow.cursor, draft)
@@ -32,6 +39,17 @@ class UserService:
             {"user_id": created.id, "username": username},
         )
         return created
+
+    def update_profile(self, user_id: int, full_name: str, bio: str) -> User:
+        with self._unit_of_work_factory() as uow:
+            updated = self._user_repository.update_profile(uow.cursor, user_id, full_name, bio)
+            uow.commit()
+
+        self._activity_logger.log(
+            "profile_updated",
+            {"user_id": user_id},
+        )
+        return updated
 
     def authenticate(self, email: str, password: str) -> Optional[User]:
         with self._unit_of_work_factory() as uow:

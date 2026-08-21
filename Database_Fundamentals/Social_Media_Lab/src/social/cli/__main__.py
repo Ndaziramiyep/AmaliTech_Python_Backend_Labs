@@ -50,6 +50,10 @@ class App:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     if len(sys.argv) == 1:
         interactive.run(App())
         return

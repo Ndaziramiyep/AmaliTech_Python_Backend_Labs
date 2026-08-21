@@ -31,14 +31,20 @@ class FeedService:
         key = timeline_cache_key(follower_id)
         cached = self._cache.get(key)
         if cached is not None:
-            return [_post_from_dict(entry) for entry in json.loads(cached)]
+            payload = json.loads(cached)
+            # A cache entry only satisfies a request whose limit it was
+            # actually fetched at (or a smaller one) - otherwise a earlier
+            # small-limit read would silently cap a later, larger request.
+            if payload["limit"] >= limit:
+                posts = [_post_from_dict(entry) for entry in payload["posts"]]
+                return posts[:limit]
 
         with self._unit_of_work_factory() as uow:
             posts = self._feed_repository.get_timeline(uow.cursor, follower_id, limit)
 
         self._cache.set(
             key,
-            json.dumps([_post_to_dict(post) for post in posts]),
+            json.dumps({"limit": limit, "posts": [_post_to_dict(post) for post in posts]}),
             self._ttl_seconds,
         )
         return posts
