@@ -104,20 +104,26 @@ main.py           `python main.py ...` without installing the package
 
 ## Setup
 
+Postgres runs as a locally installed server (not in Docker), so data is
+visible directly in pgAdmin without going through a container. Redis and
+Mongo still run via docker-compose.
+
 ```bash
-docker compose up -d              # Postgres, Redis, Mongo
+docker compose up -d              # Redis, Mongo (Postgres is a local install)
 python -m venv .venv
 .venv/Scripts/activate             # .venv/bin/activate on macOS/Linux
 pip install -e .
 python scripts/apply_migrations.py
 ```
 
-Copy `.env.example` to `.env` to point at anything other than the
-docker-compose defaults — it's loaded automatically, no manual `export`
-needed. Note the compose file maps Postgres/Redis/Mongo to host ports
-5433/6380/27018 rather than their usual 5432/6379/27017 — this sidesteps a
-common conflict where a locally installed Postgres, Redis-compatible (e.g.
-Memurai), or Mongo service is already bound to the standard port and
+Copy `.env.example` to `.env` and fill in your local Postgres password — it's
+loaded automatically, no manual `export` needed. `POSTGRES_DSN` points at
+`localhost:5432`, the default port of a local Postgres install, against a
+database named `Social-MediaDB` (create it first if it doesn't already exist
+— e.g. via pgAdmin or `createdb`). Redis/Mongo still use the compose file's
+host ports 6380/27018 rather than their usual 6379/27017 — this sidesteps a
+common conflict where a locally installed Redis-compatible service (e.g.
+Memurai) or Mongo service is already bound to the standard port and
 silently intercepts the container's traffic on `localhost`.
 
 ## Running
@@ -173,6 +179,6 @@ social-cli timeline 1
 
 ```bash
 pytest tests/unit          # fakes only, no infrastructure required
-pytest tests/integration   # requires `docker compose up -d` first; skips
-                            # automatically if Postgres isn't reachable
+pytest tests/integration   # requires your local Postgres server to be running;
+                            # skips automatically if it isn't reachable
 ```

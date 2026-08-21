@@ -1,0 +1,12 @@
+colorama==0.4.6
+dnspython==2.8.0
+iniconfig==2.3.0
+packaging==26.3
+pluggy==1.6.0
+psycopg2-binary==2.9.12
+Pygments==2.21.0
+pymongo==4.17.0
+pytest==9.1.1
+python-dotenv==1.2.3
+redis==8.1.0
+-e git+https://github.com/Ndaziramiyep/AmaliTech_Python_Backend_Labs.git@07b4dd3dafd9aac565c85d0a05f14c28dffdb00e#egg=social&subdirectory=database_fundamentals\social_media_lab
