@@ -6,6 +6,7 @@ to export them manually.
 """
 import os
 from dataclasses import dataclass
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
@@ -23,11 +24,21 @@ class Settings:
     mongo_db_name: str
 
 
+def _build_postgres_dsn() -> str:
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    database = os.environ.get("POSTGRES_DB", "Social-MediaDB")
+    user = os.environ.get("POSTGRES_USER", "postgres")
+    password = os.environ.get("POSTGRES_PASSWORD", "")
+    return (
+        f"postgresql://{quote_plus(user)}:{quote_plus(password)}"
+        f"@{host}:{port}/{database}"
+    )
+
+
 def load_settings() -> Settings:
     return Settings(
-        postgres_dsn=os.environ.get(
-            "POSTGRES_DSN", "postgresql://social:social@localhost:5433/social"
-        ),
+        postgres_dsn=_build_postgres_dsn(),
         postgres_pool_min_size=int(os.environ.get("POSTGRES_POOL_MIN_SIZE", "1")),
         postgres_pool_max_size=int(os.environ.get("POSTGRES_POOL_MAX_SIZE", "10")),
         redis_url=os.environ.get("REDIS_URL", "redis://localhost:6380/0"),

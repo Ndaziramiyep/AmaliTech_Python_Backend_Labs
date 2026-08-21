@@ -1,4 +1,4 @@
-"""Integration fixtures against a real Postgres, per POSTGRES_DSN in .env.
+"""Integration fixtures against a real Postgres, per the POSTGRES_* vars in .env.
 
 Runs against a separate <dbname>_test database, created on demand - never
 the same database load_settings() points the CLI/REPL at. The `cursor`
