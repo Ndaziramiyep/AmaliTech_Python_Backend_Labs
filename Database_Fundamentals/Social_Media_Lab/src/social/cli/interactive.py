@@ -208,16 +208,25 @@ def _posts_menu(app, current_user) -> None:
             print("Not a valid choice.")
 
 
+_FOLLOWS_MENU_ITEMS = ["Follow a User", "Unfollow a User", "Who I Follow", "My Followers"]
+
+
 def _follows_menu(app, current_user) -> None:
     while True:
         print()
         print(_section_header("Follows"))
-        choice = _display_menu(["Follow a User"])
+        choice = _display_menu(_FOLLOWS_MENU_ITEMS)
 
         if choice == "0":
             return
         if choice == "1":
             _follow(app, current_user)
+        elif choice == "2":
+            _unfollow(app, current_user)
+        elif choice == "3":
+            _who_i_follow(app, current_user)
+        elif choice == "4":
+            _my_followers(app, current_user)
         else:
             print("Not a valid choice.")
 
@@ -244,6 +253,41 @@ def _follow(app, current_user) -> None:
     if followee is not None:
         app.follows.follow(current_user.id, followee.id)
         print(f"You are now following {followee.username}.")
+
+
+def _unfollow(app, current_user) -> None:
+    usernames = _usernames_by_id(app)
+    following_ids = app.follows.list_following(current_user.id)
+    if not following_ids:
+        print("You aren't following anyone yet.")
+        return
+    print("Users you follow:")
+    for i, user_id in enumerate(following_ids, start=1):
+        print(f"  {i}) {usernames.get(user_id, f'user {user_id}')}")
+    chosen_id = _pick_from(following_ids, prompt="pick a user to unfollow")
+    if chosen_id is not None:
+        app.follows.unfollow(current_user.id, chosen_id)
+        print(f"You have unfollowed {usernames.get(chosen_id, f'user {chosen_id}')}.")
+
+
+def _who_i_follow(app, current_user) -> None:
+    usernames = _usernames_by_id(app)
+    following_ids = app.follows.list_following(current_user.id)
+    if not following_ids:
+        print("You aren't following anyone yet.")
+        return
+    for user_id in following_ids:
+        print(f"  - {usernames.get(user_id, f'user {user_id}')}")
+
+
+def _my_followers(app, current_user) -> None:
+    usernames = _usernames_by_id(app)
+    follower_ids = app.follows.list_followers(current_user.id)
+    if not follower_ids:
+        print("No one is following you yet.")
+        return
+    for user_id in follower_ids:
+        print(f"  - {usernames.get(user_id, f'user {user_id}')}")
 
 
 def _like(app, current_user) -> None:
