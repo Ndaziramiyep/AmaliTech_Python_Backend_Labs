@@ -22,6 +22,10 @@ class UserRepository(Protocol):
 
     def list_all(self, cursor: Any) -> Sequence[User]: ...
 
+    def update_profile(
+        self, cursor: Any, user_id: int, full_name: str, bio: str
+    ) -> Optional[User]: ...
+
 
 class PostRepository(Protocol):
     def create(self, cursor: Any, post: Post) -> Post: ...
