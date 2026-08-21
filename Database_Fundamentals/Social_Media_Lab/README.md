@@ -43,6 +43,7 @@ erDiagram
         bigint id PK
         varchar username UK
         varchar email UK
+        varchar password_hash
         timestamptz created_at
     }
 
@@ -130,11 +131,11 @@ data, it's a normal TCP connection like any other Postgres server.
 ## Running
 
 `python main.py` with no arguments launches an interactive menu — no flags
-to remember. It first asks you to log in (by username) or register; every
-action after that runs as that logged-in user, so it never asks for your
-own id. Anything else it needs (who to follow, which post to like or
-comment on) is shown as a numbered list to pick from, not typed in as a
-raw id:
+to remember. It first asks you to log in (by email and password) or
+register; every action after that runs as that logged-in user, so it never
+asks for your own id. Anything else it needs (who to follow, which post to
+like or comment on) is shown as a numbered list to pick from, not typed in
+as a raw id:
 
 ```text
 $ python main.py
@@ -147,6 +148,7 @@ q) quit
 > 2
 username: alice
 email: alice@example.com
+password:
 
 Logged in as 'alice' (id=1).
 
@@ -167,8 +169,8 @@ Or drive it non-interactively, either via `python main.py <command> ...`
 (no install needed) or the installed `social-cli` console script:
 
 ```bash
-social-cli register alice alice@example.com
-social-cli register bob bob@example.com
+social-cli register alice alice@example.com hunter2
+social-cli register bob bob@example.com hunter2
 social-cli follow 1 2
 social-cli post 2 "hello, world"
 social-cli comment 1 1 "nice post"

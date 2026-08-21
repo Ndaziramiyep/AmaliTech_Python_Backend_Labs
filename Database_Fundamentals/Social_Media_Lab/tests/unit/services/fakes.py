@@ -142,7 +142,11 @@ class FakeUserRepository:
         if self._raise_error is not None:
             raise self._raise_error
         created = User(
-            id=self._next_id, username=user.username, email=user.email, created_at=None
+            id=self._next_id,
+            username=user.username,
+            email=user.email,
+            password_hash=user.password_hash,
+            created_at=None,
         )
         self._next_id += 1
         self.calls.append(created)
@@ -153,6 +157,9 @@ class FakeUserRepository:
 
     def get_by_username(self, cursor: Any, username: str) -> Optional[User]:
         return next((u for u in self.calls if u.username == username), None)
+
+    def get_by_email(self, cursor: Any, email: str) -> Optional[User]:
+        return next((u for u in self.calls if u.email == email), None)
 
     def list_all(self, cursor: Any) -> Sequence[User]:
         self.received_cursor = cursor

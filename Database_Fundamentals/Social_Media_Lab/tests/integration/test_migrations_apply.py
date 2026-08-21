@@ -13,7 +13,7 @@ def test_migrations_create_all_five_tables(cursor):
 
 def test_followers_self_follow_is_rejected(cursor):
     cursor.execute(
-        "INSERT INTO users (username, email) VALUES ('ada', 'ada@example.com') RETURNING id"
+        "INSERT INTO users (username, email, password_hash) VALUES ('ada', 'ada@example.com', 'x') RETURNING id"
     )
     (user_id,) = cursor.fetchone()
 

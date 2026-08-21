@@ -3,7 +3,7 @@ from social.repositories.feed_repository import PostgresFeedRepository
 
 def _create_user(cursor, username):
     cursor.execute(
-        "INSERT INTO users (username, email) VALUES (%s, %s) RETURNING id",
+        "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, 'x') RETURNING id",
         (username, f"{username}@example.com"),
     )
     return cursor.fetchone()[0]

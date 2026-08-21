@@ -60,6 +60,7 @@ def main() -> None:
     register = sub.add_parser("register")
     register.add_argument("username")
     register.add_argument("email")
+    register.add_argument("password")
 
     post = sub.add_parser("post")
     post.add_argument("author_id", type=int)
@@ -85,7 +86,7 @@ def main() -> None:
     app = App()
 
     if args.command == "register":
-        print(app.users.register(args.username, args.email))
+        print(app.users.register(args.username, args.email, args.password))
     elif args.command == "post":
         print(app.posts.create_post(args.author_id, args.body))
     elif args.command == "follow":

@@ -13,6 +13,7 @@ erDiagram
         bigint id PK
         varchar username UK
         varchar email UK
+        varchar password_hash
         timestamptz created_at
     }
 
