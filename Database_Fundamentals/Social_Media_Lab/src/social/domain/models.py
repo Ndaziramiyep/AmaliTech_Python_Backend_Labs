@@ -9,6 +9,7 @@ class User:
     id: Optional[int]
     username: str
     email: str
+    password_hash: str = field(repr=False)
     created_at: Optional[datetime] = None
 
 

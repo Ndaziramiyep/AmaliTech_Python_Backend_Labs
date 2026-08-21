@@ -5,6 +5,7 @@ from typing import Callable, Optional, Sequence
 
 from social.domain.interfaces import ActivityLogger, UnitOfWork, UserRepository
 from social.domain.models import User
+from social.services.password_hashing import hash_password, verify_password
 
 
 class UserService:
@@ -18,8 +19,10 @@ class UserService:
         self._user_repository = user_repository
         self._activity_logger = activity_logger
 
-    def register(self, username: str, email: str) -> User:
-        draft = User(id=None, username=username, email=email)
+    def register(self, username: str, email: str, password: str) -> User:
+        draft = User(
+            id=None, username=username, email=email, password_hash=hash_password(password)
+        )
         with self._unit_of_work_factory() as uow:
             created = self._user_repository.create(uow.cursor, draft)
             uow.commit()
@@ -29,6 +32,13 @@ class UserService:
             {"user_id": created.id, "username": username},
         )
         return created
+
+    def authenticate(self, email: str, password: str) -> Optional[User]:
+        with self._unit_of_work_factory() as uow:
+            user = self._user_repository.get_by_email(uow.cursor, email)
+        if user is None or not verify_password(password, user.password_hash):
+            return None
+        return user
 
     def find_by_username(self, username: str) -> Optional[User]:
         with self._unit_of_work_factory() as uow:

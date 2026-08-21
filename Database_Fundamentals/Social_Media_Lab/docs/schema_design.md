@@ -21,9 +21,9 @@ nothing but the key (no partial dependency on part of a composite key), and
 no non-key attribute depends on another non-key attribute (no transitive
 dependency).
 
-- **users** — `username`, `email`, `created_at` each describe the user
-  identified by `id` directly, and no non-key attribute determines another.
-  No repeating groups. 3NF.
+- **users** — `username`, `email`, `password_hash`, `created_at` each
+  describe the user identified by `id` directly, and no non-key attribute
+  determines another. No repeating groups. 3NF.
 
 - **posts** — `author_id`, `body`, `metadata`, `created_at` all depend only
   on `id`, the post's surrogate key. `metadata` (JSONB) holds free-form,

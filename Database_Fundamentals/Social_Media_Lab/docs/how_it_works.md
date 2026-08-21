@@ -198,6 +198,30 @@ principle, miss an event if the process crashes between `uow.commit()` and
 `activity_logger.log()` — accepted deliberately rather than paying for
 exactly-once delivery across two different databases.
 
+## Login: how a password becomes a `password_hash`
+
+`users.password_hash` never stores a plaintext password. `UserService`
+(`services/user_service.py`) hashes on the way in and verifies on the way
+out, using stdlib-only PBKDF2-HMAC (`services/password_hashing.py`) — no
+extra dependency:
+
+- **`register(username, email, password)`** calls `hash_password(password)`
+  before building the `User` draft, so the plaintext password never reaches
+  the repository or the database — only the derived hash does.
+- **`authenticate(email, password)`** looks the user up by email
+  (`UserRepository.get_by_email`), then calls
+  `verify_password(password, user.password_hash)`, which recomputes the
+  hash with the stored salt/iteration count and compares in constant time
+  (`hmac.compare_digest`) to avoid a timing side-channel. It returns `None`
+  on *either* "no such email" or "wrong password" — the caller can't tell
+  which, which prevents the login form from being used to enumerate
+  registered emails.
+- The `User` dataclass marks `password_hash` `repr=False`
+  (`domain/models.py`), so printing a `User` (as the CLI does after every
+  command) never shows the hash on screen or in logs.
+- `interactive.py`'s login/register prompts use `getpass.getpass()` instead
+  of `input()` for the password field, so it isn't echoed to the terminal.
+
 ## The composition root: why `App` exists
 
 `cli/__main__.py: App.__init__` is the *only* place in the codebase that:
@@ -236,9 +260,9 @@ runtime. This is why:
   shown as a numbered list built from `app.users.list_users()` /
   `app.posts.list_recent()` — never typed in as a raw id — via the shared
   `_pick_from()` helper.
-- **With arguments** (`python main.py register alice a@b.com`, or the
-  installed `social-cli register alice a@b.com`) → the `argparse` subcommand
-  dispatch at the bottom of `main()`.
+- **With arguments** (`python main.py register alice a@b.com hunter2`, or
+  the installed `social-cli register alice a@b.com hunter2`) → the
+  `argparse` subcommand dispatch at the bottom of `main()`.
 
 Both front ends call the exact same `App` services
 (`app.users.register`, `app.posts.create_post`, etc.) — `interactive.py`

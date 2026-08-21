@@ -6,6 +6,8 @@ Every action operates as the logged-in user (no author_id/user_id prompts),
 and any other entity it needs (who to follow, which post to react to) is
 picked from a displayed list rather than typed in blind as a raw id.
 """
+import getpass
+
 AUTH_MENU = """
 1) login
 2) register
@@ -67,18 +69,20 @@ def _login_or_register(app):
             return None
 
         if choice in ("1", "login"):
-            username = input("username: ").strip()
-            user = app.users.find_by_username(username)
+            email = input("email: ").strip()
+            password = getpass.getpass("password: ")
+            user = app.users.authenticate(email, password)
             if user is None:
-                print(f"No user named {username!r} - try registering instead.")
+                print("Invalid email or password.")
                 continue
             return user
 
         if choice in ("2", "register"):
             username = input("username: ").strip()
             email = input("email: ").strip()
+            password = getpass.getpass("password: ")
             try:
-                return app.users.register(username, email)
+                return app.users.register(username, email, password)
             except Exception as exc:
                 print(f"Error: {exc}")
                 continue

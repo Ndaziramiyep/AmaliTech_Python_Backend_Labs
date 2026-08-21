@@ -22,6 +22,7 @@ MIGRATIONS = [
     "004_create_followers.sql",
     "005_create_likes.sql",
     "006_add_indexes.sql",
+    "007_add_password_to_users.sql",
 ]
 
 
