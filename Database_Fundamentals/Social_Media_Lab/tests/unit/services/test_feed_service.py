@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
-from social.domain.models import Post
-from social.services.cache_keys import timeline_cache_key
+from social.models import Post
 from social.services.feed_service import FeedService
+from social.utils.cache_keys import timeline_cache_key
 
 from .fakes import FakeCache, FakeFeedRepository, FakeUnitOfWork
 

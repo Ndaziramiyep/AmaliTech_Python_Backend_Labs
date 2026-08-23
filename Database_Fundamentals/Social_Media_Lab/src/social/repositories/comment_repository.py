@@ -1,7 +1,7 @@
 """Data access for the comments table. No business logic, no commits."""
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
-from social.domain.models import Comment
+from social.models import Comment
 
 
 class PostgresCommentRepository:
@@ -27,6 +27,18 @@ class PostgresCommentRepository:
             (post_id,),
         )
         return [_row_to_comment(row) for row in cursor.fetchall()]
+
+    def count_by_posts(self, cursor: Any, post_ids: Sequence[int]) -> Mapping[int, int]:
+        """Comment count per post, in one round trip. Posts with zero
+        comments are simply absent from the result - callers should default
+        missing keys to 0."""
+        if not post_ids:
+            return {}
+        cursor.execute(
+            "SELECT post_id, COUNT(*) FROM comments WHERE post_id = ANY(%s) GROUP BY post_id",
+            (list(post_ids),),
+        )
+        return dict(cursor.fetchall())
 
 
 def _row_to_comment(row: Any) -> Comment:

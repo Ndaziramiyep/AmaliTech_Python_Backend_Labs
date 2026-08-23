@@ -8,7 +8,8 @@ raised instead of committing.
 from types import TracebackType
 from typing import Any, Optional
 
-from social.infrastructure.db.pool import PostgresConnectionPool
+from social.database.connection_pool import PostgresConnectionPool
+from social.exceptions import UnitOfWorkStateError
 
 
 class PostgresUnitOfWork:
@@ -20,7 +21,7 @@ class PostgresUnitOfWork:
     @property
     def cursor(self) -> Any:
         if self._cursor is None:
-            raise RuntimeError("UnitOfWork must be used as a context manager")
+            raise UnitOfWorkStateError("UnitOfWork must be used as a context manager")
         return self._cursor
 
     def __enter__(self) -> "PostgresUnitOfWork":

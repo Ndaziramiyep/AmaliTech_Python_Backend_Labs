@@ -1,7 +1,7 @@
 """Data access for the followers table. No business logic, no commits."""
 from typing import Any, Sequence
 
-from social.domain.models import Follower
+from social.models import Follower
 
 
 class PostgresFollowerRepository:

@@ -6,7 +6,7 @@ not just recording calls.
 """
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from social.domain.models import Comment, Follower, Like, Post, User
+from social.models import Comment, Follower, Like, Post, User
 
 
 class FakeUnitOfWork:
@@ -69,6 +69,13 @@ class FakeLikeRepository:
     def exists(self, cursor: Any, user_id: int, post_id: int) -> bool:
         return (user_id, post_id) in self.calls
 
+    def count_by_posts(self, cursor: Any, post_ids: Sequence[int]) -> Mapping[int, int]:
+        counts: Dict[int, int] = {}
+        for _, liked_post_id in self.calls:
+            if liked_post_id in post_ids:
+                counts[liked_post_id] = counts.get(liked_post_id, 0) + 1
+        return counts
+
 
 class FakePostRepository:
     def __init__(self, *, raise_error: Optional[Exception] = None) -> None:
@@ -128,6 +135,13 @@ class FakeCommentRepository:
     def list_by_post(self, cursor: Any, post_id: int) -> Sequence[Comment]:
         self.received_cursor = cursor
         return [c for c in self.calls if c.post_id == post_id]
+
+    def count_by_posts(self, cursor: Any, post_ids: Sequence[int]) -> Mapping[int, int]:
+        counts: Dict[int, int] = {}
+        for comment in self.calls:
+            if comment.post_id in post_ids:
+                counts[comment.post_id] = counts.get(comment.post_id, 0) + 1
+        return counts
 
 
 class FakeUserRepository:

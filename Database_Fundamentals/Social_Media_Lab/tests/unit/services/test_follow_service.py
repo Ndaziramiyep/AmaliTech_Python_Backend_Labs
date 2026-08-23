@@ -1,8 +1,8 @@
 import pytest
 
-from social.domain.models import Follower
-from social.services.cache_keys import timeline_cache_key
+from social.models import Follower
 from social.services.follow_service import FollowService
+from social.utils.cache_keys import timeline_cache_key
 
 from .fakes import FakeActivityLogger, FakeCache, FakeFollowerRepository, FakeUnitOfWork
 

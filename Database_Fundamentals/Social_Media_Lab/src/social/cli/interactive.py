@@ -143,16 +143,29 @@ def _usernames_by_id(app):
     return {user.id: user.username for user in app.users.list_users()}
 
 
+def _engagement_by_post(app, posts) -> dict:
+    """`🤍 <likes>   💬 <comments>` per post id, one batch query each -
+    not one query per post."""
+    post_ids = [post.id for post in posts]
+    like_counts = app.likes.count_by_posts(post_ids)
+    comment_counts = app.comments.count_by_posts(post_ids)
+    return {
+        post.id: f"\U0001F90D {like_counts.get(post.id, 0)}   \U0001F4AC {comment_counts.get(post.id, 0)}"
+        for post in posts
+    }
+
+
 def _pick_post(app):
     posts = app.posts.list_recent()
     if not posts:
         print("No posts yet.")
         return None
     usernames = _usernames_by_id(app)
+    engagement = _engagement_by_post(app, posts)
     print("Posts:")
     for i, post in enumerate(posts, start=1):
         author = usernames.get(post.author_id, f"user {post.author_id}")
-        print(f"  {i}) {post.body}  (by {author})")
+        print(f"  {i}) {post.body}  (by {author})  {engagement[post.id]}")
     return _pick_from(posts, prompt="pick a post")
 
 
@@ -243,9 +256,10 @@ def _browse_posts(app) -> None:
         print("No posts yet.")
         return
     usernames = _usernames_by_id(app)
+    engagement = _engagement_by_post(app, posts)
     for post in posts:
         author = usernames.get(post.author_id, f"user {post.author_id}")
-        print(f"  [{post.id}] {author}: {post.body}")
+        print(f"  [{post.id}] {author}: {post.body}  {engagement[post.id]}")
 
 
 def _follow(app, current_user) -> None:
@@ -324,6 +338,7 @@ def _timeline(app, current_user) -> None:
         print("Nothing here yet - follow someone, or check back after they post.")
         return
     usernames = _usernames_by_id(app)
+    engagement = _engagement_by_post(app, posts)
     for post in posts:
         author = usernames.get(post.author_id, f"user {post.author_id}")
-        print(f"  [{post.id}] {author}: {post.body}")
+        print(f"  [{post.id}] {author}: {post.body}  {engagement[post.id]}")

@@ -14,16 +14,7 @@ import pytest
 import psycopg2
 
 from social.config import load_settings
-
-MIGRATIONS = [
-    "001_create_users.sql",
-    "002_create_posts.sql",
-    "003_create_comments.sql",
-    "004_create_followers.sql",
-    "005_create_likes.sql",
-    "006_add_indexes.sql",
-    "007_add_password_to_users.sql",
-]
+from social.database.schema import ensure_schema
 
 
 def _test_dsn(app_dsn: str) -> str:
@@ -59,8 +50,6 @@ def postgres_dsn():
 
 @pytest.fixture
 def cursor(postgres_dsn):
-    import pathlib
-
     connection = psycopg2.connect(postgres_dsn)
     try:
         with connection.cursor() as setup_cursor:
@@ -69,11 +58,7 @@ def cursor(postgres_dsn):
             )
         connection.commit()
 
-        migrations_dir = pathlib.Path(__file__).resolve().parent.parent.parent / "migrations"
-        for filename in MIGRATIONS:
-            with connection.cursor() as setup_cursor:
-                setup_cursor.execute((migrations_dir / filename).read_text())
-            connection.commit()
+        ensure_schema(connection)
 
         with connection.cursor() as test_cursor:
             yield test_cursor

@@ -3,9 +3,9 @@ happens only after that transaction has committed, outside the ACID boundary.
 """
 from typing import Callable, Optional, Sequence
 
-from social.domain.interfaces import ActivityLogger, UnitOfWork, UserRepository
-from social.domain.models import User
-from social.services.password_hashing import hash_password, verify_password
+from social.interfaces import ActivityLogger, UnitOfWork, UserRepository
+from social.models import User
+from social.utils.password_hashing import hash_password, verify_password
 
 
 class UserService:

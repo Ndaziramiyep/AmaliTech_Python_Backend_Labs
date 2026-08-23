@@ -5,7 +5,7 @@ the EXPLAIN ANALYZE writeup in docs/schema_design.md.
 """
 from typing import Any, Sequence
 
-from social.domain.models import Post
+from social.models import Post
 
 
 class PostgresFeedRepository:

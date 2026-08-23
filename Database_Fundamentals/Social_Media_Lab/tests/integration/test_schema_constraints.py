@@ -1,8 +1,9 @@
+"""Constraints that only a real Postgres enforces - no fake can verify these."""
 import psycopg2
 import pytest
 
 
-def test_migrations_create_all_five_tables(cursor):
+def test_all_five_tables_exist(cursor):
     cursor.execute(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
     )

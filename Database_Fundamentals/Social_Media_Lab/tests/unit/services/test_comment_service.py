@@ -53,3 +53,18 @@ def test_list_comments_returns_comments_for_that_post():
     result = service.list_comments(post_id=1)
 
     assert [c.body for c in result] == ["first"]
+
+
+def test_count_by_posts_returns_per_post_comment_counts():
+    repository = FakeCommentRepository()
+    uow = FakeUnitOfWork()
+    logger = FakeActivityLogger()
+    service = CommentService(lambda: uow, repository, logger)
+    service.create_comment(post_id=1, author_id=2, body="first")
+    service.create_comment(post_id=1, author_id=3, body="second")
+    service.create_comment(post_id=2, author_id=3, body="unrelated")
+
+    result = service.count_by_posts([1, 2, 3])
+
+    assert result == {1: 2, 2: 1}
+    assert 3 not in result

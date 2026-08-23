@@ -1,7 +1,7 @@
 """Data access for the likes table. No business logic, no commits."""
-from typing import Any
+from typing import Any, Mapping, Sequence
 
-from social.domain.models import Like
+from social.models import Like
 
 
 class PostgresLikeRepository:
@@ -23,3 +23,15 @@ class PostgresLikeRepository:
             (user_id, post_id),
         )
         return cursor.fetchone() is not None
+
+    def count_by_posts(self, cursor: Any, post_ids: Sequence[int]) -> Mapping[int, int]:
+        """Like count per post, in one round trip. Posts with zero likes are
+        simply absent from the result - callers should default missing keys
+        to 0."""
+        if not post_ids:
+            return {}
+        cursor.execute(
+            "SELECT post_id, COUNT(*) FROM likes WHERE post_id = ANY(%s) GROUP BY post_id",
+            (list(post_ids),),
+        )
+        return dict(cursor.fetchall())

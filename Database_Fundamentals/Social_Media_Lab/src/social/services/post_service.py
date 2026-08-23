@@ -3,8 +3,8 @@ only after that transaction has committed, outside the ACID boundary.
 """
 from typing import Any, Callable, Mapping, Optional, Sequence
 
-from social.domain.interfaces import ActivityLogger, PostRepository, UnitOfWork
-from social.domain.models import Post
+from social.interfaces import ActivityLogger, PostRepository, UnitOfWork
+from social.models import Post
 
 
 class PostService:

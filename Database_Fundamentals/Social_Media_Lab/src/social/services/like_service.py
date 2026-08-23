@@ -1,10 +1,10 @@
 """Liking a post is one atomic transaction; the activity log write happens
 only after that transaction has committed, outside the ACID boundary.
 """
-from typing import Callable
+from typing import Callable, Mapping, Sequence
 
-from social.domain.interfaces import ActivityLogger, LikeRepository, UnitOfWork
-from social.domain.models import Like
+from social.interfaces import ActivityLogger, LikeRepository, UnitOfWork
+from social.models import Like
 
 
 class LikeService:
@@ -28,3 +28,8 @@ class LikeService:
             {"user_id": user_id, "post_id": post_id},
         )
         return like
+
+    def count_by_posts(self, post_ids: Sequence[int]) -> Mapping[int, int]:
+        """Like count per post id; a post with no likes is simply absent."""
+        with self._unit_of_work_factory() as uow:
+            return self._like_repository.count_by_posts(uow.cursor, post_ids)

@@ -9,9 +9,9 @@ import json
 from datetime import datetime
 from typing import Callable, Sequence
 
-from social.domain.interfaces import Cache, FeedRepository, UnitOfWork
-from social.domain.models import Post
-from social.services.cache_keys import timeline_cache_key
+from social.interfaces import Cache, FeedRepository, UnitOfWork
+from social.models import Post
+from social.utils.cache_keys import timeline_cache_key
 
 
 class FeedService:

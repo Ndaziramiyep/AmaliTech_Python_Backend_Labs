@@ -1,6 +1,6 @@
 import pytest
 
-from social.domain.models import Like
+from social.models import Like
 from social.services.like_service import LikeService
 
 from .fakes import FakeActivityLogger, FakeLikeRepository, FakeUnitOfWork
@@ -39,3 +39,18 @@ def test_like_rolls_back_and_leaves_no_side_effects_when_insert_fails():
     assert uow.committed is False
     assert uow.rolled_back is True
     assert logger.entries == []
+
+
+def test_count_by_posts_returns_per_post_like_counts():
+    repository = FakeLikeRepository()
+    uow = FakeUnitOfWork()
+    logger = FakeActivityLogger()
+    service = LikeService(lambda: uow, repository, logger)
+    service.like(user_id=1, post_id=10)
+    service.like(user_id=2, post_id=10)
+    service.like(user_id=1, post_id=20)
+
+    result = service.count_by_posts([10, 20, 30])
+
+    assert result == {10: 2, 20: 1}
+    assert 30 not in result

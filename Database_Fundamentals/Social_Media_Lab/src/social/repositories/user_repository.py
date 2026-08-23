@@ -1,7 +1,7 @@
 """Data access for the users table. No business logic, no commits."""
 from typing import Any, Optional, Sequence
 
-from social.domain.models import User
+from social.models import User
 
 
 _COLUMNS = "id, username, email, password_hash, created_at, full_name, bio, is_active"

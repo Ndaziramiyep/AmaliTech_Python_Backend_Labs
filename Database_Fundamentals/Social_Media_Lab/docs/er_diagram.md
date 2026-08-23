@@ -2,49 +2,55 @@
 
 ```mermaid
 erDiagram
-    USERS ||--o{ POSTS : authors
-    USERS ||--o{ COMMENTS : authors
-    POSTS ||--o{ COMMENTS : has
-    USERS ||--o{ FOLLOWERS : "follows / is followed by"
-    USERS ||--o{ LIKES : likes
-    POSTS ||--o{ LIKES : "liked by"
+    USERS ||--o{ POSTS      : authors
+    USERS ||--o{ COMMENTS   : authors
+    POSTS ||--o{ COMMENTS   : has
+    USERS ||--o{ FOLLOWERS  : "follows / is followed by"
+    USERS ||--o{ LIKES      : likes
+    POSTS ||--o{ LIKES      : "liked by"
 
     USERS {
-        bigint id PK
-        varchar username UK
-        varchar email UK
-        varchar password_hash
+        bigint      id             PK
+        varchar     username       UK
+        varchar     email          UK
+        varchar     password_hash
         timestamptz created_at
+        varchar     full_name
+        text        bio
+        boolean     is_active
     }
 
     POSTS {
-        bigint id PK
-        bigint author_id FK
-        text body
-        jsonb metadata
+        bigint      id           PK
+        bigint      author_id    FK
+        text        body
+        jsonb       metadata
         timestamptz created_at
     }
 
     COMMENTS {
-        bigint id PK
-        bigint post_id FK
-        bigint author_id FK
-        text body
+        bigint      id           PK
+        bigint      post_id      FK
+        bigint      author_id    FK
+        text        body
         timestamptz created_at
     }
 
     FOLLOWERS {
-        bigint follower_id PK,FK
-        bigint followee_id PK,FK
+        bigint      follower_id  PK,FK
+        bigint      followee_id  PK,FK
         timestamptz created_at
     }
 
     LIKES {
-        bigint user_id PK,FK
-        bigint post_id PK,FK
+        bigint      user_id      PK,FK
+        bigint      post_id      PK,FK
         timestamptz created_at
     }
 ```
+
+**Legend:** `PK` primary key · `FK` foreign key · `UK` unique constraint ·
+`PK,FK` a column that is both at once.
 
 ## Why `FOLLOWERS` is only one line, not two
 

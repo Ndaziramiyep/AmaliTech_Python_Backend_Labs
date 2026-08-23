@@ -4,9 +4,9 @@ that transaction has committed, and are not part of the ACID boundary.
 """
 from typing import Callable, Sequence
 
-from social.domain.interfaces import ActivityLogger, Cache, FollowerRepository, UnitOfWork
-from social.domain.models import Follower
-from social.services.cache_keys import timeline_cache_key
+from social.interfaces import ActivityLogger, Cache, FollowerRepository, UnitOfWork
+from social.models import Follower
+from social.utils.cache_keys import timeline_cache_key
 
 
 class FollowService:

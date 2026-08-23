@@ -21,9 +21,12 @@ nothing but the key (no partial dependency on part of a composite key), and
 no non-key attribute depends on another non-key attribute (no transitive
 dependency).
 
-- **users** — `username`, `email`, `password_hash`, `created_at` each
-  describe the user identified by `id` directly, and no non-key attribute
-  determines another. No repeating groups. 3NF.
+- **users** — `username`, `email`, `password_hash`, `created_at`,
+  `full_name`, `bio`, and `is_active` each describe the user identified by
+  `id` directly, and no non-key attribute determines another (`full_name`
+  and `bio` don't determine `is_active`, or vice versa — they're
+  independent, single-valued facts about the same user). No repeating
+  groups. 3NF.
 
 - **posts** — `author_id`, `body`, `metadata`, `created_at` all depend only
   on `id`, the post's surrogate key. `metadata` (JSONB) holds free-form,
@@ -60,9 +63,9 @@ meanings, so all five tables satisfy 1NF, 2NF, and 3NF.
 - `idx_posts_author_id`, `idx_comments_post_id`, `idx_comments_author_id` —
   support the FK lookups implied by cascading deletes and basic joins.
 - `followers_pkey` (composite B-tree on `follower_id, followee_id`,
-  added in `006_add_indexes.sql`) — doubles as the uniqueness constraint on
-  a follow edge and as the access path the feed timeline query uses: given a
-  `follower_id`, find every `followee_id`.
+  defined in `src/social/database/schema.py`) — doubles as the uniqueness
+  constraint on a follow edge and as the access path the feed timeline
+  query uses: given a `follower_id`, find every `followee_id`.
 - `idx_posts_author_created_at` (`author_id, created_at DESC`) — lets the
   feed timeline query fetch each followed author's posts pre-sorted,
   avoiding a full sort after the join. Measured with `EXPLAIN ANALYZE` in
@@ -75,7 +78,7 @@ meanings, so all five tables satisfy 1NF, 2NF, and 3NF.
 Seeded 500 users, ~30 follow edges/user (15,000 rows), 50 posts/user (25,000
 rows), then ran `EXPLAIN (ANALYZE, BUFFERS)` on `queries/feed_timeline.sql`
 for one follower (30 followees, ~1,500 candidate posts, `LIMIT 20`) before
-and after applying `006_add_indexes.sql`.
+and after adding `followers_pkey`/`idx_posts_author_created_at` to the schema.
 
 **Before** (no `followers_pkey`, no `idx_posts_author_created_at`):
 

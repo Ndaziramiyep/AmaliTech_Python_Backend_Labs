@@ -3,7 +3,7 @@ from typing import Any, Optional, Sequence
 
 from psycopg2.extras import Json
 
-from social.domain.models import Post
+from social.models import Post
 
 
 class PostgresPostRepository:

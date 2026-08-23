@@ -1,9 +1,9 @@
 -- Given a follower_id, fetch the newest posts from everyone they follow.
 -- dialect: postgresql
 -- Access pattern the followers_pkey composite index and
--- idx_posts_author_created_at (both migrations/006_add_indexes.sql) exist
--- for. See docs/schema_design.md "Indexing" for the EXPLAIN ANALYZE before/
--- after this index was added.
+-- idx_posts_author_created_at (both in src/social/database/schema.py)
+-- exist for. See docs/schema_design.md "Indexing" for the EXPLAIN ANALYZE
+-- before/after this index was added.
 --
 -- $1 = follower_id, $2 = limit. These are standard SQL positional
 -- parameters (valid on their own, unlike psycopg2's %s style), so this
