@@ -1,21 +1,26 @@
 """Data access for the posts table. No business logic, no commits."""
 from typing import Any, Optional, Sequence
 
+import psycopg2
 from psycopg2.extras import Json
 
+from social.exceptions import UserNotFoundError
 from social.models import Post
 
 
 class PostgresPostRepository:
     def create(self, cursor: Any, post: Post) -> Post:
-        cursor.execute(
-            """
-            INSERT INTO posts (author_id, body, metadata)
-            VALUES (%s, %s, %s)
-            RETURNING id, author_id, body, metadata, created_at
-            """,
-            (post.author_id, post.body, Json(dict(post.metadata))),
-        )
+        try:
+            cursor.execute(
+                """
+                INSERT INTO posts (author_id, body, metadata)
+                VALUES (%s, %s, %s)
+                RETURNING id, author_id, body, metadata, created_at
+                """,
+                (post.author_id, post.body, Json(dict(post.metadata))),
+            )
+        except psycopg2.errors.ForeignKeyViolation as exc:
+            raise UserNotFoundError(f"No user with id {post.author_id}.") from exc
         return _row_to_post(cursor.fetchone())
 
     def get_by_id(self, cursor: Any, post_id: int) -> Optional[Post]:

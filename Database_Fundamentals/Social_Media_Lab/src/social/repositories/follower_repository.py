@@ -1,19 +1,33 @@
 """Data access for the followers table. No business logic, no commits."""
 from typing import Any, Sequence
 
+import psycopg2
+
+from social.exceptions import AlreadyFollowingError, SelfFollowError, UserNotFoundError
 from social.models import Follower
 
 
 class PostgresFollowerRepository:
     def create(self, cursor: Any, follower_id: int, followee_id: int) -> Follower:
-        cursor.execute(
-            """
-            INSERT INTO followers (follower_id, followee_id)
-            VALUES (%s, %s)
-            RETURNING follower_id, followee_id, created_at
-            """,
-            (follower_id, followee_id),
-        )
+        try:
+            cursor.execute(
+                """
+                INSERT INTO followers (follower_id, followee_id)
+                VALUES (%s, %s)
+                RETURNING follower_id, followee_id, created_at
+                """,
+                (follower_id, followee_id),
+            )
+        except psycopg2.errors.CheckViolation as exc:
+            raise SelfFollowError("A user cannot follow themselves.") from exc
+        except psycopg2.errors.UniqueViolation as exc:
+            raise AlreadyFollowingError(
+                f"User {follower_id} already follows user {followee_id}."
+            ) from exc
+        except psycopg2.errors.ForeignKeyViolation as exc:
+            constraint = exc.diag.constraint_name
+            missing_id = follower_id if constraint == "followers_follower_id_fkey" else followee_id
+            raise UserNotFoundError(f"No user with id {missing_id}.") from exc
         row = cursor.fetchone()
         return Follower(follower_id=row[0], followee_id=row[1], created_at=row[2])
 

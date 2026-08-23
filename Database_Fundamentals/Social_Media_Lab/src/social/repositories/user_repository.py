@@ -1,6 +1,9 @@
 """Data access for the users table. No business logic, no commits."""
 from typing import Any, Optional, Sequence
 
+import psycopg2
+
+from social.exceptions import DuplicateEmailError, DuplicateUsernameError
 from social.models import User
 
 
@@ -9,14 +12,26 @@ _COLUMNS = "id, username, email, password_hash, created_at, full_name, bio, is_a
 
 class PostgresUserRepository:
     def create(self, cursor: Any, user: User) -> User:
-        cursor.execute(
-            f"""
-            INSERT INTO users (username, email, password_hash, full_name, bio)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING {_COLUMNS}
-            """,
-            (user.username, user.email, user.password_hash, user.full_name, user.bio),
-        )
+        try:
+            cursor.execute(
+                f"""
+                INSERT INTO users (username, email, password_hash, full_name, bio)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING {_COLUMNS}
+                """,
+                (user.username, user.email, user.password_hash, user.full_name, user.bio),
+            )
+        except psycopg2.errors.UniqueViolation as exc:
+            constraint = exc.diag.constraint_name
+            if constraint == "users_username_key":
+                raise DuplicateUsernameError(
+                    f"Username {user.username!r} is already taken."
+                ) from exc
+            if constraint == "users_email_key":
+                raise DuplicateEmailError(
+                    f"Email {user.email!r} is already registered."
+                ) from exc
+            raise
         return _row_to_user(cursor.fetchone())
 
     def get_by_id(self, cursor: Any, user_id: int) -> Optional[User]:

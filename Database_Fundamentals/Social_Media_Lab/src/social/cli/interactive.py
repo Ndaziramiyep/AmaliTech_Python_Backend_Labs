@@ -35,6 +35,22 @@ def _section_header(title: str) -> str:
     return f"{title}\n{'─' * (len(title) + 10)}"
 
 
+def _avatar_square(username: str) -> str:
+    """A large square frame - standing in for a profile picture - with the
+    logged-in username centered inside it."""
+    label = username.strip() or "?"
+    inner_width = max(len(label) + 6, 16)
+    top = "┌" + "─" * inner_width + "┐"
+    blank = "│" + " " * inner_width + "│"
+    middle = "│" + label.center(inner_width) + "│"
+    bottom = "└" + "─" * inner_width + "┘"
+    return "\n".join([top, blank, middle, blank, bottom])
+
+
+def _user_banner(current_user) -> str:
+    return _avatar_square(current_user.username)
+
+
 def _display_menu(items, *, choice_label="Choice") -> str:
     print()
     for i, label in enumerate(items, start=1):
@@ -53,7 +69,7 @@ def run(app) -> None:
 
     while current_user is not None:
         print()
-        print(_box(["SOCIAL MEDIA CLI", f"{current_user.full_name or current_user.username} <{current_user.email}>"]))
+        print(_user_banner(current_user))
         print()
         print(_section_header("Main Menu"))
         try:
@@ -101,6 +117,7 @@ def _login_or_register(app):
             if user is None:
                 print("Invalid email or password.")
                 continue
+            print("Login successfully.")
             return user
 
         if choice in ("2", "register"):
