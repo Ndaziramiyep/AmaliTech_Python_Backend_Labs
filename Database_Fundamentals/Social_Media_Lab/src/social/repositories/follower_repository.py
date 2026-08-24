@@ -8,7 +8,10 @@ from social.models import Follower
 
 
 class PostgresFollowerRepository:
+    """Postgres-backed persistence for follower relationships."""
+
     def create(self, cursor: Any, follower_id: int, followee_id: int) -> Follower:
+        """Creates a follow relationship between two users."""
         try:
             cursor.execute(
                 """
@@ -32,6 +35,7 @@ class PostgresFollowerRepository:
         return Follower(follower_id=row[0], followee_id=row[1], created_at=row[2])
 
     def exists(self, cursor: Any, follower_id: int, followee_id: int) -> bool:
+        """Reports whether one user already follows another."""
         cursor.execute(
             "SELECT 1 FROM followers WHERE follower_id = %s AND followee_id = %s",
             (follower_id, followee_id),
@@ -39,6 +43,7 @@ class PostgresFollowerRepository:
         return cursor.fetchone() is not None
 
     def delete(self, cursor: Any, follower_id: int, followee_id: int) -> bool:
+        """Removes a follow relationship, returning whether a row was deleted."""
         cursor.execute(
             "DELETE FROM followers WHERE follower_id = %s AND followee_id = %s",
             (follower_id, followee_id),
@@ -46,6 +51,7 @@ class PostgresFollowerRepository:
         return cursor.rowcount > 0
 
     def list_following(self, cursor: Any, follower_id: int) -> Sequence[int]:
+        """Returns the ids of the users a given user follows, most recent first."""
         cursor.execute(
             "SELECT followee_id FROM followers WHERE follower_id = %s ORDER BY created_at DESC",
             (follower_id,),
@@ -53,6 +59,7 @@ class PostgresFollowerRepository:
         return [row[0] for row in cursor.fetchall()]
 
     def list_followers(self, cursor: Any, followee_id: int) -> Sequence[int]:
+        """Returns the ids of the users following a given user, most recent first."""
         cursor.execute(
             "SELECT follower_id FROM followers WHERE followee_id = %s ORDER BY created_at DESC",
             (followee_id,),

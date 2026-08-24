@@ -11,7 +11,10 @@ _COLUMNS = "id, username, email, password_hash, created_at, full_name, bio, is_a
 
 
 class PostgresUserRepository:
+    """Postgres-backed persistence for users."""
+
     def create(self, cursor: Any, user: User) -> User:
+        """Inserts a new user and returns the stored row."""
         try:
             cursor.execute(
                 f"""
@@ -35,6 +38,7 @@ class PostgresUserRepository:
         return _row_to_user(cursor.fetchone())
 
     def get_by_id(self, cursor: Any, user_id: int) -> Optional[User]:
+        """Returns the user with the given id, or None if it does not exist."""
         cursor.execute(
             f"SELECT {_COLUMNS} FROM users WHERE id = %s",
             (user_id,),
@@ -43,6 +47,7 @@ class PostgresUserRepository:
         return _row_to_user(row) if row else None
 
     def get_by_username(self, cursor: Any, username: str) -> Optional[User]:
+        """Returns the user with the given username, or None if it does not exist."""
         cursor.execute(
             f"SELECT {_COLUMNS} FROM users WHERE username = %s",
             (username,),
@@ -51,6 +56,7 @@ class PostgresUserRepository:
         return _row_to_user(row) if row else None
 
     def get_by_email(self, cursor: Any, email: str) -> Optional[User]:
+        """Returns the user with the given email, or None if it does not exist."""
         cursor.execute(
             f"SELECT {_COLUMNS} FROM users WHERE email = %s",
             (email,),
@@ -59,12 +65,14 @@ class PostgresUserRepository:
         return _row_to_user(row) if row else None
 
     def list_all(self, cursor: Any) -> Sequence[User]:
+        """Returns all users ordered by id."""
         cursor.execute(f"SELECT {_COLUMNS} FROM users ORDER BY id")
         return [_row_to_user(row) for row in cursor.fetchall()]
 
     def update_profile(
         self, cursor: Any, user_id: int, full_name: str, bio: str
     ) -> Optional[User]:
+        """Updates a user's full name and bio, returning the updated user or None if it does not exist."""
         cursor.execute(
             f"""
             UPDATE users SET full_name = %s, bio = %s
@@ -78,6 +86,7 @@ class PostgresUserRepository:
 
 
 def _row_to_user(row: Any) -> User:
+    """Converts a raw database row into a User."""
     user_id, username, email, password_hash, created_at, full_name, bio, is_active = row
     return User(
         id=user_id,

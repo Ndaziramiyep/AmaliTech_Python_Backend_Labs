@@ -1,3 +1,4 @@
+"""Unit tests for FeedService's cache-aside timeline reads against fake cache and repository collaborators."""
 from datetime import datetime, timezone
 
 from social.models import Post
@@ -10,6 +11,7 @@ CREATED_AT = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def test_get_timeline_on_cache_miss_queries_repository_then_populates_cache():
+    """Test that a cache miss queries the repository for the timeline and then caches the result."""
     posts = [Post(id=1, author_id=2, body="hi", metadata={}, created_at=CREATED_AT)]
     repository = FakeFeedRepository(posts=posts)
     cache = FakeCache()
@@ -24,6 +26,7 @@ def test_get_timeline_on_cache_miss_queries_repository_then_populates_cache():
 
 
 def test_get_timeline_on_cache_hit_does_not_query_repository():
+    """Test that a cache hit returns the cached timeline without querying the repository."""
     posts = [Post(id=1, author_id=2, body="hi", metadata={}, created_at=CREATED_AT)]
     repository = FakeFeedRepository(posts=posts)
     cache = FakeCache()

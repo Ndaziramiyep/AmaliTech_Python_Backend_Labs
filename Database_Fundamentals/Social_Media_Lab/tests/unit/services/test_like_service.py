@@ -1,3 +1,4 @@
+"""Unit tests for LikeService against fake repository, unit-of-work, and activity-logger collaborators."""
 import pytest
 
 from social.models import Like
@@ -11,6 +12,7 @@ class DuplicateLikeViolation(Exception):
 
 
 def test_like_commits_once_then_logs_activity():
+    """Test that liking a post commits exactly once and then logs a post_liked activity event."""
     repository = FakeLikeRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -27,6 +29,7 @@ def test_like_commits_once_then_logs_activity():
 
 
 def test_like_rolls_back_and_leaves_no_side_effects_when_insert_fails():
+    """Test that a failed like insert rolls back the transaction and logs no activity."""
     error = DuplicateLikeViolation("likes_pkey")
     repository = FakeLikeRepository(raise_error=error)
     uow = FakeUnitOfWork()
@@ -42,6 +45,7 @@ def test_like_rolls_back_and_leaves_no_side_effects_when_insert_fails():
 
 
 def test_count_by_posts_returns_per_post_like_counts():
+    """Test that count_by_posts returns a like count per post id, omitting posts with no likes."""
     repository = FakeLikeRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()

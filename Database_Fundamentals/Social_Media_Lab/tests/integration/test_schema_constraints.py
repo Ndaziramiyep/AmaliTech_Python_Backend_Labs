@@ -4,6 +4,7 @@ import pytest
 
 
 def test_all_five_tables_exist(cursor):
+    """Test that the users, posts, comments, followers, and likes tables all exist."""
     cursor.execute(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
     )
@@ -13,6 +14,7 @@ def test_all_five_tables_exist(cursor):
 
 
 def test_followers_self_follow_is_rejected(cursor):
+    """Test that inserting a followers row where a user follows themselves violates a check constraint."""
     cursor.execute(
         "INSERT INTO users (username, email, password_hash) VALUES ('ada', 'ada@example.com', 'x') RETURNING id"
     )

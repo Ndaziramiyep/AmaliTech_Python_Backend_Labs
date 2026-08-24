@@ -6,6 +6,8 @@ from typing import Optional
 
 @dataclass(frozen=True, slots=True)
 class Comment:
+    """Represents a comment left on a post."""
+
     id: Optional[int]
     post_id: int
     author_id: int

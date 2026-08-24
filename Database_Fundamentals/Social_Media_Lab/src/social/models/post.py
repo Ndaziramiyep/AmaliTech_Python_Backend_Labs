@@ -6,6 +6,8 @@ from typing import Any, Mapping, Optional
 
 @dataclass(frozen=True, slots=True)
 class Post:
+    """Represents a post authored by a user."""
+
     id: Optional[int]
     author_id: int
     body: str

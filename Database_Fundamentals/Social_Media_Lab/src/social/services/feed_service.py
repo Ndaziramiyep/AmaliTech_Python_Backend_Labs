@@ -1,10 +1,4 @@
-"""Cache-aside read of a user's timeline.
-
-FollowService already invalidates timeline_cache_key(follower_id) whenever
-a new follow edge is created, so a miss here means either "never cached" or
-"invalidated by a follow" - not "stale from a new post" (posts don't
-invalidate followers' caches; the TTL bounds that staleness instead).
-"""
+"""Reads a follower's timeline cache-aside, keyed by follower id, where FollowService invalidates the entry on new follows but new posts do not, leaving the TTL to bound that staleness."""
 import json
 from datetime import datetime
 from typing import Callable, Sequence
@@ -15,6 +9,8 @@ from social.utils.cache_keys import timeline_cache_key
 
 
 class FeedService:
+    """Serves a follower's timeline reads from cache, falling back to the repository on a miss."""
+
     def __init__(
         self,
         unit_of_work_factory: Callable[[], UnitOfWork],
@@ -22,12 +18,14 @@ class FeedService:
         cache: Cache,
         ttl_seconds: int,
     ) -> None:
+        """Store the unit-of-work factory, feed repository, cache, and cache TTL used by this service."""
         self._unit_of_work_factory = unit_of_work_factory
         self._feed_repository = feed_repository
         self._cache = cache
         self._ttl_seconds = ttl_seconds
 
     def get_timeline(self, follower_id: int, limit: int = 20) -> Sequence[Post]:
+        """Return a follower's timeline, serving it from cache when a sufficiently-limited entry exists and otherwise querying and caching it."""
         key = timeline_cache_key(follower_id)
         cached = self._cache.get(key)
         if cached is not None:
@@ -51,6 +49,7 @@ class FeedService:
 
 
 def _post_to_dict(post: Post) -> dict:
+    """Convert a Post into a JSON-serializable dict for caching."""
     return {
         "id": post.id,
         "author_id": post.author_id,
@@ -61,6 +60,7 @@ def _post_to_dict(post: Post) -> dict:
 
 
 def _post_from_dict(entry: dict) -> Post:
+    """Reconstruct a Post from the dict produced by _post_to_dict."""
     return Post(
         id=entry["id"],
         author_id=entry["author_id"],

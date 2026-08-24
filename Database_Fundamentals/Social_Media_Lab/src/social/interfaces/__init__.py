@@ -1,8 +1,4 @@
-"""Protocols implemented by concrete infrastructure/repositories.
-
-Re-exported here so callers can `from social.interfaces import X` instead
-of reaching into the individual submodule per protocol.
-"""
+"""Protocols implemented by concrete infrastructure/repositories, re-exported here for convenient imports."""
 from social.interfaces.activity_logger import ActivityLogger
 from social.interfaces.cache import Cache
 from social.interfaces.repositories import (

@@ -1,13 +1,4 @@
-"""Application-specific exception hierarchy.
-
-Beyond `UnitOfWorkStateError`, every exception here is a repository
-translating one specific Postgres constraint violation (looked up by
-constraint name, not by parsing the driver's error message) into a clear,
-catchable, driver-independent type - see the `except psycopg2.errors.*`
-blocks in `repositories/*.py`. A caller (a test, a future API layer) can
-catch `DuplicateUsernameError` without knowing or caring that it's backed
-by a UNIQUE constraint named `users_username_key`.
-"""
+"""Application-specific exception hierarchy where, beyond `UnitOfWorkStateError`, each exception is a repository translating one specific Postgres constraint violation (looked up by constraint name) into a clear, catchable, driver-independent type."""
 
 
 class SocialError(Exception):

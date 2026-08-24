@@ -1,7 +1,4 @@
-"""CLI entry point: parses argv into subcommands and dispatches to the
-composition root's services. With no arguments, launches the menu-driven
-REPL in `interactive.py` instead.
-"""
+"""Parses argv into subcommands and dispatches to the composition root's services, or launches the menu-driven REPL in `interactive.py` when called with no arguments."""
 import argparse
 import json
 import sys
@@ -11,6 +8,7 @@ from social.composition import App
 
 
 def main() -> None:
+    """Run the CLI: dispatch to a subcommand, or the interactive REPL if none was given."""
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")

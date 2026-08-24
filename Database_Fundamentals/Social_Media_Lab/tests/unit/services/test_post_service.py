@@ -1,3 +1,4 @@
+"""Unit tests for PostService against fake repository, unit-of-work, and activity-logger collaborators."""
 import pytest
 
 from social.services.post_service import PostService
@@ -10,6 +11,7 @@ class PostInsertFailure(Exception):
 
 
 def test_create_post_commits_once_then_logs_activity_with_jsonb_metadata():
+    """Test that creating a post with metadata commits exactly once and then logs a post_created activity event."""
     repository = FakePostRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -28,6 +30,7 @@ def test_create_post_commits_once_then_logs_activity_with_jsonb_metadata():
 
 
 def test_create_post_defaults_metadata_to_empty_dict():
+    """Test that creating a post without metadata defaults its metadata to an empty dict."""
     repository = FakePostRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -39,6 +42,7 @@ def test_create_post_defaults_metadata_to_empty_dict():
 
 
 def test_create_post_rolls_back_and_leaves_no_side_effects_when_insert_fails():
+    """Test that a failed post insert rolls back the transaction and logs no activity."""
     error = PostInsertFailure("author_id fk violation")
     repository = FakePostRepository(raise_error=error)
     uow = FakeUnitOfWork()
@@ -54,6 +58,7 @@ def test_create_post_rolls_back_and_leaves_no_side_effects_when_insert_fails():
 
 
 def test_list_recent_returns_newest_first():
+    """Test that list_recent returns posts ordered from newest to oldest."""
     repository = FakePostRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -67,6 +72,7 @@ def test_list_recent_returns_newest_first():
 
 
 def test_list_recent_respects_limit():
+    """Test that list_recent returns no more posts than the given limit."""
     repository = FakePostRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()

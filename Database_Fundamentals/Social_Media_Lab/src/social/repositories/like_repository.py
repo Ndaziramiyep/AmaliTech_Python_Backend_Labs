@@ -8,7 +8,10 @@ from social.models import Like
 
 
 class PostgresLikeRepository:
+    """Postgres-backed persistence for likes."""
+
     def create(self, cursor: Any, user_id: int, post_id: int) -> Like:
+        """Records a like from a user on a post."""
         try:
             cursor.execute(
                 """
@@ -31,6 +34,7 @@ class PostgresLikeRepository:
         return Like(user_id=row[0], post_id=row[1], created_at=row[2])
 
     def exists(self, cursor: Any, user_id: int, post_id: int) -> bool:
+        """Reports whether a user has already liked a post."""
         cursor.execute(
             "SELECT 1 FROM likes WHERE user_id = %s AND post_id = %s",
             (user_id, post_id),
@@ -38,9 +42,7 @@ class PostgresLikeRepository:
         return cursor.fetchone() is not None
 
     def count_by_posts(self, cursor: Any, post_ids: Sequence[int]) -> Mapping[int, int]:
-        """Like count per post, in one round trip. Posts with zero likes are
-        simply absent from the result - callers should default missing keys
-        to 0."""
+        """Returns the like count per post in one round trip, omitting posts with zero likes (callers should default missing keys to 0)."""
         if not post_ids:
             return {}
         cursor.execute(

@@ -1,9 +1,4 @@
-"""Single source of truth for runtime settings, read from the environment.
-
-Loads a .env file from the current directory (if present) before reading,
-so `python main.py ...` picks up local overrides without the caller having
-to export them manually.
-"""
+"""Single source of truth for runtime settings, read from the environment after loading a .env file from the current directory (if present) so local overrides don't need to be exported manually."""
 import os
 from dataclasses import dataclass
 from urllib.parse import quote_plus
@@ -15,6 +10,8 @@ load_dotenv()
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    """Immutable bundle of resolved runtime settings for Postgres, Redis, and Mongo."""
+
     postgres_dsn: str
     postgres_pool_min_size: int
     postgres_pool_max_size: int
@@ -25,6 +22,7 @@ class Settings:
 
 
 def _build_postgres_dsn() -> str:
+    """Build a Postgres connection string from environment variables, defaulting where unset."""
     host = os.environ.get("POSTGRES_HOST", "localhost")
     port = os.environ.get("POSTGRES_PORT", "5432")
     database = os.environ.get("POSTGRES_DB", "Social-MediaDB")
@@ -37,6 +35,7 @@ def _build_postgres_dsn() -> str:
 
 
 def load_settings() -> Settings:
+    """Read all runtime settings from the environment and return them as a `Settings` instance."""
     return Settings(
         postgres_dsn=_build_postgres_dsn(),
         postgres_pool_min_size=int(os.environ.get("POSTGRES_POOL_MIN_SIZE", "1")),

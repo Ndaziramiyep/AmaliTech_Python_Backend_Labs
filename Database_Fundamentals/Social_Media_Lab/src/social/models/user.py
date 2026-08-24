@@ -6,6 +6,8 @@ from typing import Optional
 
 @dataclass(frozen=True, slots=True)
 class User:
+    """Represents a registered user account."""
+
     id: Optional[int]
     username: str
     email: str

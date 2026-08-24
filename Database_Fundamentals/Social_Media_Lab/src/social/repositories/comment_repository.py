@@ -8,7 +8,10 @@ from social.models import Comment
 
 
 class PostgresCommentRepository:
+    """Postgres-backed persistence for comments."""
+
     def create(self, cursor: Any, comment: Comment) -> Comment:
+        """Inserts a new comment and returns the stored row."""
         try:
             cursor.execute(
                 """
@@ -26,6 +29,7 @@ class PostgresCommentRepository:
         return _row_to_comment(cursor.fetchone())
 
     def list_by_post(self, cursor: Any, post_id: int) -> Sequence[Comment]:
+        """Returns all comments for a post, oldest first."""
         cursor.execute(
             """
             SELECT id, post_id, author_id, body, created_at
@@ -38,9 +42,7 @@ class PostgresCommentRepository:
         return [_row_to_comment(row) for row in cursor.fetchall()]
 
     def count_by_posts(self, cursor: Any, post_ids: Sequence[int]) -> Mapping[int, int]:
-        """Comment count per post, in one round trip. Posts with zero
-        comments are simply absent from the result - callers should default
-        missing keys to 0."""
+        """Returns the comment count per post in one round trip, omitting posts with zero comments (callers should default missing keys to 0)."""
         if not post_ids:
             return {}
         cursor.execute(
@@ -51,6 +53,7 @@ class PostgresCommentRepository:
 
 
 def _row_to_comment(row: Any) -> Comment:
+    """Converts a raw database row into a Comment."""
     comment_id, post_id, author_id, body, created_at = row
     return Comment(
         id=comment_id,

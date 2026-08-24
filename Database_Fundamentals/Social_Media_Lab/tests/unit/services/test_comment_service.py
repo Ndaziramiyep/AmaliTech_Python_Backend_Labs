@@ -1,3 +1,4 @@
+"""Unit tests for CommentService against fake repository, unit-of-work, and activity-logger collaborators."""
 import pytest
 
 from social.services.comment_service import CommentService
@@ -10,6 +11,7 @@ class CommentInsertFailure(Exception):
 
 
 def test_create_comment_commits_once_then_logs_activity():
+    """Test that creating a comment commits exactly once and then logs a comment_created activity event."""
     repository = FakeCommentRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -28,6 +30,7 @@ def test_create_comment_commits_once_then_logs_activity():
 
 
 def test_create_comment_rolls_back_and_leaves_no_side_effects_when_insert_fails():
+    """Test that a failed comment insert rolls back the transaction and logs no activity."""
     error = CommentInsertFailure("post_id fk violation")
     repository = FakeCommentRepository(raise_error=error)
     uow = FakeUnitOfWork()
@@ -43,6 +46,7 @@ def test_create_comment_rolls_back_and_leaves_no_side_effects_when_insert_fails(
 
 
 def test_list_comments_returns_comments_for_that_post():
+    """Test that list_comments returns only the comments belonging to the requested post."""
     repository = FakeCommentRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -56,6 +60,7 @@ def test_list_comments_returns_comments_for_that_post():
 
 
 def test_count_by_posts_returns_per_post_comment_counts():
+    """Test that count_by_posts returns a comment count per post id, omitting posts with no comments."""
     repository = FakeCommentRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()

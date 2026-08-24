@@ -1,4 +1,4 @@
-"""Pure dataclasses describing the domain. No I/O, no driver imports."""
+"""Pure dataclasses describing the domain, with no I/O or driver imports."""
 from social.models.comment import Comment
 from social.models.follower import Follower
 from social.models.like import Like

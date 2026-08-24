@@ -8,12 +8,15 @@ from social.models import Post
 
 
 class PostService:
+    """Creates posts and lists recent ones, logging post creation to the activity log after commit."""
+
     def __init__(
         self,
         unit_of_work_factory: Callable[[], UnitOfWork],
         post_repository: PostRepository,
         activity_logger: ActivityLogger,
     ) -> None:
+        """Store the unit-of-work factory, post repository, and activity logger used by this service."""
         self._unit_of_work_factory = unit_of_work_factory
         self._post_repository = post_repository
         self._activity_logger = activity_logger
@@ -24,6 +27,7 @@ class PostService:
         body: str,
         metadata: Optional[Mapping[str, Any]] = None,
     ) -> Post:
+        """Create a post and log the creation event after the transaction commits."""
         draft = Post(id=None, author_id=author_id, body=body, metadata=metadata or {})
         with self._unit_of_work_factory() as uow:
             created = self._post_repository.create(uow.cursor, draft)
@@ -36,5 +40,6 @@ class PostService:
         return created
 
     def list_recent(self, limit: int = 20) -> Sequence[Post]:
+        """Return the most recently created posts, up to the given limit."""
         with self._unit_of_work_factory() as uow:
             return self._post_repository.list_recent(uow.cursor, limit)

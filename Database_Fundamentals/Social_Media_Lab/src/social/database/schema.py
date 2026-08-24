@@ -1,11 +1,4 @@
-"""The app's entire schema, created on demand - no migrations, no manual
-setup step. `ensure_schema()` runs once per `App` startup (see
-`composition.py`) against whatever database `settings.postgres_dsn`
-resolves to, Docker-hosted or a local install alike: if psycopg2 can
-connect, the tables get created there. Every statement is
-`IF NOT EXISTS`/idempotent, so running it on an already-initialized
-database is a fast no-op rather than an error.
-"""
+"""Creates the app's entire schema on demand using idempotent `IF NOT EXISTS` statements, so running it against an already-initialized database is a fast no-op rather than an error."""
 from typing import Any
 
 _SCHEMA_SQL = """
@@ -66,7 +59,6 @@ CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes (post_id);
 
 
 def ensure_schema(connection: Any) -> None:
-    """Create every table/index this app needs against `connection`, if
-    they don't already exist."""
+    """Create every table/index this app needs against `connection`, if they don't already exist."""
     with connection, connection.cursor() as cursor:
         cursor.execute(_SCHEMA_SQL)

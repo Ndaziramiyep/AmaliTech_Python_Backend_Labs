@@ -1,6 +1,4 @@
-"""Convenience entry point: `python main.py <command> ...` runs the CLI
-without requiring `pip install -e .` first.
-"""
+"""Convenience entry point so `python main.py <command> ...` runs the CLI without requiring `pip install -e .` first."""
 import pathlib
 import sys
 

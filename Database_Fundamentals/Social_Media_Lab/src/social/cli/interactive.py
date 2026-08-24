@@ -1,11 +1,4 @@
-"""Menu-driven REPL for `python main.py` with no arguments.
-
-Reuses the same App composition root and service calls as the argparse
-subcommands in __main__.py - this is just a friendlier front end over them.
-Every action operates as the logged-in user (no author_id/user_id prompts),
-and any other entity it needs (who to follow, which post to react to) is
-picked from a displayed list rather than typed in blind as a raw id.
-"""
+"""Menu-driven REPL for `python main.py` with no arguments, acting as the logged-in user and letting entities be picked from a displayed list instead of typed as a raw id."""
 import getpass
 
 AUTH_MENU = """
@@ -19,6 +12,7 @@ _POSTS_MENU_ITEMS = ["Create Post", "Browse All Posts", "Like a Post", "Comment 
 
 
 def _box(lines) -> str:
+    """Render a list of lines inside a box-drawing frame, with dividers between entries."""
     width = max(len(line) for line in lines) + 4
     top = "╔" + "═" * width + "╗"
     bottom = "╚" + "═" * width + "╝"
@@ -32,12 +26,12 @@ def _box(lines) -> str:
 
 
 def _section_header(title: str) -> str:
+    """Render a title followed by an underline sized to match it."""
     return f"{title}\n{'─' * (len(title) + 10)}"
 
 
 def _avatar_square(username: str) -> str:
-    """A large square frame - standing in for a profile picture - with the
-    logged-in username centered inside it."""
+    """Render a square frame standing in for a profile picture, with the logged-in username centered inside it."""
     label = username.strip() or "?"
     inner_width = max(len(label) + 6, 16)
     top = "┌" + "─" * inner_width + "┐"
@@ -48,10 +42,12 @@ def _avatar_square(username: str) -> str:
 
 
 def _user_banner(current_user) -> str:
+    """Render the avatar square for the currently logged-in user."""
     return _avatar_square(current_user.username)
 
 
 def _display_menu(items, *, choice_label="Choice") -> str:
+    """Print a numbered menu of `items` and return the user's raw input."""
     print()
     for i, label in enumerate(items, start=1):
         print(f"   {i}. {label}")
@@ -60,6 +56,7 @@ def _display_menu(items, *, choice_label="Choice") -> str:
 
 
 def run(app) -> None:
+    """Drive the interactive REPL: log in or register, then loop over the main menu until the user exits."""
     print("Social Media Lab - interactive mode. Ctrl-D or 'q' to quit.")
     try:
         current_user = _login_or_register(app)
@@ -103,6 +100,7 @@ def run(app) -> None:
 
 
 def _login_or_register(app):
+    """Prompt in a loop until the user logs in, registers, or exits."""
     while True:
         print(AUTH_MENU)
         choice = input("> ").strip().lower()
@@ -136,8 +134,7 @@ def _login_or_register(app):
 
 
 def _pick_from(items, *, prompt):
-    """Show a 1-based numbered list and let the caller pick a position -
-    never a raw database id."""
+    """Let the caller pick an item by its 1-based position in a displayed list rather than by a raw database id."""
     selection = input(f"{prompt} (1-{len(items)}): ").strip()
     if not selection.isdigit() or not (1 <= int(selection) <= len(items)):
         print("Not a valid choice.")
@@ -146,6 +143,7 @@ def _pick_from(items, *, prompt):
 
 
 def _pick_user(app, *, exclude_id):
+    """Let the caller pick a user other than `exclude_id` from a displayed list of followable users."""
     candidates = [u for u in app.users.list_users() if u.id != exclude_id]
     if not candidates:
         print("No other users yet.")
@@ -157,12 +155,12 @@ def _pick_user(app, *, exclude_id):
 
 
 def _usernames_by_id(app):
+    """Return a mapping of every user's id to their username."""
     return {user.id: user.username for user in app.users.list_users()}
 
 
 def _engagement_by_post(app, posts) -> dict:
-    """`🤍 <likes>   💬 <comments>` per post id, one batch query each -
-    not one query per post."""
+    """Build a `🤍 <likes>   💬 <comments>` label per post id using one batch query each, not one query per post."""
     post_ids = [post.id for post in posts]
     like_counts = app.likes.count_by_posts(post_ids)
     comment_counts = app.comments.count_by_posts(post_ids)
@@ -173,6 +171,7 @@ def _engagement_by_post(app, posts) -> dict:
 
 
 def _pick_post(app):
+    """Let the caller pick a post from a displayed list of recent posts with their engagement counts."""
     posts = app.posts.list_recent()
     if not posts:
         print("No posts yet.")
@@ -187,6 +186,7 @@ def _pick_post(app):
 
 
 def _profile_menu(app, current_user):
+    """Show the current user's profile and loop over the profile actions menu until they go back."""
     while True:
         print()
         print(_box(["My Profile"]))
@@ -209,6 +209,7 @@ def _profile_menu(app, current_user):
 
 
 def _edit_profile(app, current_user):
+    """Prompt for a new full name and bio, defaulting to the current values, and save the updated profile."""
     full_name = input(f"full name [{current_user.full_name}]: ").strip()
     bio = input(f"bio [{current_user.bio}]: ").strip()
     return app.users.update_profile(
@@ -219,6 +220,7 @@ def _edit_profile(app, current_user):
 
 
 def _posts_menu(app, current_user) -> None:
+    """Loop over the posts actions menu until the user goes back."""
     while True:
         print()
         print(_section_header("Posts"))
@@ -242,6 +244,7 @@ _FOLLOWS_MENU_ITEMS = ["Follow a User", "Unfollow a User", "Who I Follow", "My F
 
 
 def _follows_menu(app, current_user) -> None:
+    """Loop over the follows actions menu until the user goes back."""
     while True:
         print()
         print(_section_header("Follows"))
@@ -262,12 +265,14 @@ def _follows_menu(app, current_user) -> None:
 
 
 def _post(app, current_user) -> None:
+    """Prompt for a post body and create it as authored by the current user."""
     body = input("body: ").strip()
     app.posts.create_post(current_user.id, body)
     print("Post created successfully.")
 
 
 def _browse_posts(app) -> None:
+    """Print every recent post with its author and engagement counts."""
     posts = app.posts.list_recent()
     if not posts:
         print("No posts yet.")
@@ -280,6 +285,7 @@ def _browse_posts(app) -> None:
 
 
 def _follow(app, current_user) -> None:
+    """Let the current user pick another user to follow."""
     followee = _pick_user(app, exclude_id=current_user.id)
     if followee is not None:
         app.follows.follow(current_user.id, followee.id)
@@ -287,6 +293,7 @@ def _follow(app, current_user) -> None:
 
 
 def _unfollow(app, current_user) -> None:
+    """Let the current user pick someone they follow and unfollow them."""
     usernames = _usernames_by_id(app)
     following_ids = app.follows.list_following(current_user.id)
     if not following_ids:
@@ -302,6 +309,7 @@ def _unfollow(app, current_user) -> None:
 
 
 def _who_i_follow(app, current_user) -> None:
+    """Print the usernames of everyone the current user follows."""
     usernames = _usernames_by_id(app)
     following_ids = app.follows.list_following(current_user.id)
     if not following_ids:
@@ -312,6 +320,7 @@ def _who_i_follow(app, current_user) -> None:
 
 
 def _my_followers(app, current_user) -> None:
+    """Print the usernames of everyone following the current user."""
     usernames = _usernames_by_id(app)
     follower_ids = app.follows.list_followers(current_user.id)
     if not follower_ids:
@@ -322,6 +331,7 @@ def _my_followers(app, current_user) -> None:
 
 
 def _like(app, current_user) -> None:
+    """Let the current user pick a post and like it."""
     post = _pick_post(app)
     if post is not None:
         app.likes.like(current_user.id, post.id)
@@ -329,6 +339,7 @@ def _like(app, current_user) -> None:
 
 
 def _comment(app, current_user) -> None:
+    """Let the current user pick a post and add a comment to it."""
     post = _pick_post(app)
     if post is None:
         return
@@ -341,6 +352,7 @@ _DEFAULT_TIMELINE_LIMIT = 20
 
 
 def _timeline(app, current_user) -> None:
+    """Prompt for a post limit and print the current user's timeline up to that many posts."""
     raw = input(f"How many posts to show (default {_DEFAULT_TIMELINE_LIMIT}): ").strip()
     if not raw:
         limit = _DEFAULT_TIMELINE_LIMIT

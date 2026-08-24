@@ -1,7 +1,4 @@
-"""Composition root: wires the real Postgres/Redis/Mongo implementations to
-the services. This is the only place in the codebase that constructs a
-concrete infrastructure class directly.
-"""
+"""Composition root: the only place in the codebase that constructs a concrete infrastructure class directly, wiring the real Postgres/Redis/Mongo implementations to the services."""
 from social.cache.redis_cache import RedisCache
 from social.config import load_settings
 from social.database.connection_pool import PostgresConnectionPool
@@ -26,6 +23,7 @@ class App:
     """Wires concrete infrastructure to services; the only place that does."""
 
     def __init__(self) -> None:
+        """Load settings, ensure the schema exists, and build every service with its concrete dependencies."""
         settings = load_settings()
         pool = PostgresConnectionPool(
             settings.postgres_dsn,

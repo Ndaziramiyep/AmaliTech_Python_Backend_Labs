@@ -9,7 +9,10 @@ from social.models import Post
 
 
 class PostgresPostRepository:
+    """Postgres-backed persistence for posts."""
+
     def create(self, cursor: Any, post: Post) -> Post:
+        """Inserts a new post and returns the stored row."""
         try:
             cursor.execute(
                 """
@@ -24,6 +27,7 @@ class PostgresPostRepository:
         return _row_to_post(cursor.fetchone())
 
     def get_by_id(self, cursor: Any, post_id: int) -> Optional[Post]:
+        """Returns the post with the given id, or None if it does not exist."""
         cursor.execute(
             "SELECT id, author_id, body, metadata, created_at FROM posts WHERE id = %s",
             (post_id,),
@@ -32,9 +36,11 @@ class PostgresPostRepository:
         return _row_to_post(row) if row else None
 
     def delete(self, cursor: Any, post_id: int) -> None:
+        """Deletes the post with the given id."""
         cursor.execute("DELETE FROM posts WHERE id = %s", (post_id,))
 
     def list_recent(self, cursor: Any, limit: int) -> Sequence[Post]:
+        """Returns the most recently created posts, up to the given limit."""
         cursor.execute(
             """
             SELECT id, author_id, body, metadata, created_at
@@ -48,6 +54,7 @@ class PostgresPostRepository:
 
 
 def _row_to_post(row: Any) -> Post:
+    """Converts a raw database row into a Post."""
     post_id, author_id, body, metadata, created_at = row
     return Post(
         id=post_id,

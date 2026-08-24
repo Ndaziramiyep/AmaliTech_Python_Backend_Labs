@@ -1,3 +1,4 @@
+"""Unit tests for FollowService against fake repository, unit-of-work, cache, and activity-logger collaborators."""
 import pytest
 
 from social.models import Follower
@@ -16,6 +17,7 @@ class DuplicateFollowViolation(Exception):
 
 
 def _make_service(repository, uow, cache=None, logger=None):
+    """Build a FollowService wired to the given collaborators, creating fake cache and logger if not supplied."""
     cache = cache or FakeCache()
     logger = logger or FakeActivityLogger()
     service = FollowService(lambda: uow, repository, logger, cache)
@@ -23,6 +25,7 @@ def _make_service(repository, uow, cache=None, logger=None):
 
 
 def test_follow_commits_once_then_logs_activity_and_invalidates_cache():
+    """Test that following commits once, logs a user_followed event, and invalidates the follower's timeline cache."""
     repository = FakeFollowerRepository()
     uow = FakeUnitOfWork()
     service, cache, logger = _make_service(repository, uow)
@@ -43,6 +46,7 @@ def test_follow_commits_once_then_logs_activity_and_invalidates_cache():
     [SelfFollowViolation("chk_followers_no_self_follow"), DuplicateFollowViolation("followers_pkey")],
 )
 def test_follow_rolls_back_and_leaves_no_side_effects_when_insert_fails(error):
+    """Test that a failed follow insert rolls back the transaction and neither logs activity nor invalidates the cache."""
     repository = FakeFollowerRepository(raise_error=error)
     uow = FakeUnitOfWork()
     service, cache, logger = _make_service(repository, uow)

@@ -8,6 +8,7 @@ class RedisCache:
     """Cache protocol implementation backed by a real Redis connection."""
 
     def __init__(self, url: str) -> None:
+        """Connect to Redis at `url`, decoding responses to strings."""
         self._client = redis.Redis.from_url(url, decode_responses=True)
 
     def get(self, key: str) -> Optional[str]:

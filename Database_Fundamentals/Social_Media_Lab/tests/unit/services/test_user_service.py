@@ -1,3 +1,4 @@
+"""Unit tests for UserService against fake repository, unit-of-work, and activity-logger collaborators."""
 import pytest
 
 from social.services.user_service import UserService
@@ -10,6 +11,7 @@ class DuplicateUsernameViolation(Exception):
 
 
 def test_register_commits_once_then_logs_activity():
+    """Test that registering a user commits exactly once and then logs a user_registered activity event."""
     repository = FakeUserRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -28,6 +30,7 @@ def test_register_commits_once_then_logs_activity():
 
 
 def test_register_rolls_back_and_leaves_no_side_effects_when_insert_fails():
+    """Test that a failed user insert rolls back the transaction and logs no activity."""
     error = DuplicateUsernameViolation("users_username_key")
     repository = FakeUserRepository(raise_error=error)
     uow = FakeUnitOfWork()
@@ -43,6 +46,7 @@ def test_register_rolls_back_and_leaves_no_side_effects_when_insert_fails():
 
 
 def test_authenticate_returns_the_user_when_the_password_matches():
+    """Test that authenticate returns the user when the given password matches."""
     repository = FakeUserRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -56,6 +60,7 @@ def test_authenticate_returns_the_user_when_the_password_matches():
 
 
 def test_authenticate_returns_none_when_the_password_is_wrong():
+    """Test that authenticate returns None when the given password is wrong."""
     repository = FakeUserRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -66,6 +71,7 @@ def test_authenticate_returns_none_when_the_password_is_wrong():
 
 
 def test_authenticate_returns_none_when_no_user_has_that_email():
+    """Test that authenticate returns None when no user has the given email."""
     repository = FakeUserRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -75,6 +81,7 @@ def test_authenticate_returns_none_when_no_user_has_that_email():
 
 
 def test_find_by_username_returns_the_matching_registered_user():
+    """Test that find_by_username returns the registered user matching that username."""
     repository = FakeUserRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -88,6 +95,7 @@ def test_find_by_username_returns_the_matching_registered_user():
 
 
 def test_find_by_username_returns_none_when_no_such_user():
+    """Test that find_by_username returns None when no user has that username."""
     repository = FakeUserRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()
@@ -97,6 +105,7 @@ def test_find_by_username_returns_none_when_no_such_user():
 
 
 def test_list_users_returns_every_registered_user_in_order():
+    """Test that list_users returns every registered user in registration order."""
     repository = FakeUserRepository()
     uow = FakeUnitOfWork()
     logger = FakeActivityLogger()

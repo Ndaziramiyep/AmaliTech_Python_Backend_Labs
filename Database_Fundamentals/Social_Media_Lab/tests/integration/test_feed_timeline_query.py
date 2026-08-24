@@ -1,7 +1,9 @@
+"""Integration tests for PostgresFeedRepository's timeline query against a real Postgres database."""
 from social.repositories.feed_repository import PostgresFeedRepository
 
 
 def _create_user(cursor, username):
+    """Insert a user with the given username and return its id."""
     cursor.execute(
         "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, 'x') RETURNING id",
         (username, f"{username}@example.com"),
@@ -10,6 +12,7 @@ def _create_user(cursor, username):
 
 
 def _create_post(cursor, author_id, body):
+    """Insert a post by the given author and return its id."""
     cursor.execute(
         "INSERT INTO posts (author_id, body) VALUES (%s, %s) RETURNING id",
         (author_id, body),
@@ -18,6 +21,7 @@ def _create_post(cursor, author_id, body):
 
 
 def test_get_timeline_returns_only_followed_authors_newest_first(cursor):
+    """Test that the timeline includes only followed authors' posts, newest first."""
     alice = _create_user(cursor, "alice")
     bob = _create_user(cursor, "bob")
     carol = _create_user(cursor, "carol")
@@ -35,6 +39,7 @@ def test_get_timeline_returns_only_followed_authors_newest_first(cursor):
 
 
 def test_get_timeline_respects_limit(cursor):
+    """Test that the timeline query returns no more posts than the given limit."""
     alice = _create_user(cursor, "alice")
     bob = _create_user(cursor, "bob")
     cursor.execute(
