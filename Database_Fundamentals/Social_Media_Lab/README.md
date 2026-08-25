@@ -39,9 +39,9 @@ erDiagram
     USERS ||--o{ POSTS      : publishes
     USERS ||--o{ COMMENTS   : writes
     POSTS ||--o{ COMMENTS   : has
-    USERS ||--o{ FOLLOWERS  : "follows / is followed by"
     USERS ||--o{ LIKES      : likes
     POSTS ||--o{ LIKES      : receives
+    USERS ||--o{ FOLLOWERS  : "follows / is followed by"
 
     USERS {
         bigint      id             PK
@@ -70,15 +70,15 @@ erDiagram
         timestamptz created_at
     }
 
-    FOLLOWERS {
-        bigint      follower_id  PK,FK
-        bigint      followee_id  PK,FK
-        timestamptz created_at
-    }
-
     LIKES {
         bigint      user_id      PK,FK
         bigint      post_id      PK,FK
+        timestamptz created_at
+    }
+
+    FOLLOWERS {
+        bigint      follower_id  PK,FK
+        bigint      followee_id  PK,FK
         timestamptz created_at
     }
 ```
@@ -89,7 +89,32 @@ associative tables whose composite primary key is built entirely from their
 two foreign keys, which also doubles as the index that prevents a duplicate
 edge.
 
-### One line per relationship, not two
+### Why `USERS`↔`COMMENTS` exists alongside `USERS`↔`POSTS`↔`COMMENTS`
+
+`COMMENTS` sits between two tables (`USERS` and `POSTS`) that are *also*
+connected to each other, which draws as a triangle. That's not a redundant
+relationship stated twice — `comments` carries two independent foreign
+keys, and neither one can be derived from the other:
+
+- `author_id` says **who wrote** the comment.
+- `post_id` says **which post** it's on.
+
+Nothing ties those together: any user can comment on any post, so the
+comment's author is never implied by the post's author. If it were —
+if comments could only ever be left by the post's own author — then
+`USERS`↔`COMMENTS` really would be redundant and should be dropped in
+favor of going through `POSTS`. It isn't, so both edges stay, each with its
+own verb (`writes` vs. `has`) so they're never mistaken for the same fact.
+`LIKES` forms the identical shape for the identical reason: `user_id` (who
+liked it) and `post_id` (what they liked) are two independent columns on
+one row, not a chain through `posts.author_id`.
+
+`ON DELETE CASCADE` on every foreign key is what makes both edges "real":
+deleting a user removes their comments (via `author_id`) *and* their posts
+(via `author_id` on `posts`, cascading again to that post's comments via
+`post_id`) — two separate cascade paths, matching the two separate edges.
+
+### One self-referencing edge, not two
 
 `FOLLOWERS` is drawn as a single self-referencing edge on `USERS`, not two:
 `follower_id` and `followee_id` are both `users.id`, so "follows" and "is
@@ -97,19 +122,6 @@ followed by" are the same edge viewed from either end — drawing it a second
 time would just repeat that one relationship under a different label.
 `chk_followers_no_self_follow` (enforced in the schema, invisible to a
 diagram) blocks a user from following themselves.
-
-`LIKES`, by contrast, sits between two genuinely different entities — a user
-and the post they liked — so `USERS`↔`LIKES` and `POSTS`↔`LIKES` are two
-distinct relationships, not a duplicate of one. The same reasoning gives
-`USERS`↔`COMMENTS` and `POSTS`↔`COMMENTS` their own lines: a comment has
-exactly one author *and* belongs to exactly one post, which are two
-different facts about the same row, not the same fact stated twice. Every
-relationship above also carries its own verb (`publishes` / `writes` / `has`
-/ `follows…` / `likes` / `receives`), so no two edges share a label either.
-
-`ON DELETE CASCADE` on every foreign key means deleting a user or post
-removes everything that depends on it (their comments, likes, follow edges,
-posts) rather than leaving orphans.
 
 ### Normalization (3NF)
 
