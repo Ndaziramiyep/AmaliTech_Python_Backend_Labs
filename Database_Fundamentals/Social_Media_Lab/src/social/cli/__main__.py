@@ -4,7 +4,7 @@ import json
 import sys
 
 from social.cli import interactive
-from social.composition import App
+from social.app import App
 
 
 def main() -> None:

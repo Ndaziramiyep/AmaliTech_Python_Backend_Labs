@@ -16,13 +16,13 @@ repositories          Postgres access (one table or query each), no business log
   ↑
 services              one transaction + side effects (activity log, cache) per use case
   ↑
-composition + cli     composition root — wires real Postgres/Redis/Mongo, dispatches commands
+app + cli             composition root — wires real Postgres/Redis/Mongo, dispatches commands
 ```
 
 Services never touch `psycopg2`/`redis`/`pymongo` directly — they depend on
 the `Protocol`s in `src/social/interfaces/` (`UnitOfWork`, `Cache`,
 `ActivityLogger`, one per repository), and the `App` class in
-`src/social/composition.py` is the only place that wires the real
+`src/social/app.py` is the only place that wires the real
 Postgres/Redis/Mongo-backed implementations to them. Unit tests substitute
 fakes for those same protocols instead.
 
@@ -116,7 +116,7 @@ src/social/
   cache/          RedisCache (implements the Cache protocol)
   database/       Postgres pool/UnitOfWork, MongoActivityLogger, schema.py
   exceptions/     application-specific exception hierarchy
-  composition.py  App — the composition root, wires infra to services
+  app.py          App — the composition root, wires infra to services
   cli/            __main__.py (argparse + main()), interactive.py (REPL)
 tests/
   unit/           fakes-based, no infrastructure required

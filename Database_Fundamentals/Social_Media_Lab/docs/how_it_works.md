@@ -16,13 +16,13 @@ repositories           Postgres access (one table or query each), no business lo
   ↑
 services (+ utils)     one transaction + side effects (activity log, cache) per use case
   ↑
-composition            composition root — wires real Postgres/Redis/Mongo
+app                     composition root — wires real Postgres/Redis/Mongo
   ↑
 cli                     argparse subcommands + interactive REPL, dispatches commands
 ```
 
 The arrow means "depends on", read bottom-to-top: `cli` depends on
-`composition`, which depends on `services`, which depends on
+`app`, which depends on `services`, which depends on
 `repositories`, `models`, `interfaces`, and `utils` — none of which depend
 on anything else in this project. Nothing above the line ever reaches back
 down — `models`/`interfaces` never import `psycopg2`, a `repository` never
@@ -64,9 +64,9 @@ src/social/
                             MongoActivityLogger — implements the ActivityLogger protocol
   exceptions/
     errors.py        SocialError (base), UnitOfWorkStateError — application exceptions
-  composition.py      App — the composition root, wires infra to services
+  app.py              App — the composition root, wires infra to services
   cli/
-    __main__.py      argparse subcommands + main(), imports App from composition
+    __main__.py      argparse subcommands + main(), imports App from app
     interactive.py   menu-driven REPL, calls the same App/services
   config/
     settings.py      Settings dataclass, loaded from .env via python-dotenv
@@ -76,7 +76,7 @@ Everything under `models/` and `interfaces/` is inert — no network calls,
 no SQL, nothing that can fail at runtime except a bad constructor argument.
 Everything under `repositories/`, `cache/`, and `database/` is where I/O
 actually happens. `services/` (and the pure helpers in `utils/`) is the
-only place business rules and side-effect ordering live. `composition.py`
+only place business rules and side-effect ordering live. `app.py`
 is the only place that decides *which* real infrastructure to use, and
 `cli/` is the only place that parses user input into calls against it.
 
@@ -101,7 +101,7 @@ top to bottom:
    `args.follower_id=1, args.followee_id=2`, builds an `App()`, and calls
    `app.follows.follow(1, 2)`.
 
-2. **`composition.py: App.__init__`** (the composition root) already built
+2. **`app.py: App.__init__`** (the composition root) already built
    everything `follow()` needs, once, at startup:
    - a `PostgresConnectionPool` from `settings.postgres_dsn`
    - a local `uow_factory()` function returning `PostgresUnitOfWork(pool)` —
@@ -244,7 +244,7 @@ extra dependency:
 
 ## The composition root: why `App` exists
 
-`composition.py: App.__init__` is the *only* place in the codebase that:
+`app.py: App.__init__` is the *only* place in the codebase that:
 
 - reads `Settings` (via `load_settings()`)
 - constructs `PostgresConnectionPool`, `RedisCache`, `MongoActivityLogger`
@@ -270,7 +270,7 @@ Protocol per table), never a concrete `psycopg2`/`redis`/`pymongo` type.
 ## Schema bootstrap: why there are no migrations
 
 There is no `migrations/` folder and no separate "apply the schema" step.
-`App.__init__` (`composition.py`) does it inline, right after building the
+`App.__init__` (`app.py`) does it inline, right after building the
 connection pool and before constructing anything else:
 
 ```python
@@ -444,7 +444,7 @@ each piece goes:
 3. **New table** → add its `CREATE TABLE IF NOT EXISTS` to
    `ensure_schema()`, new dataclass in `models/`, new `Protocol` in
    `interfaces/repositories.py`, new `Postgres*Repository`, new
-   `*Service`, wire it into `App.__init__` (`composition.py`), expose it
+   `*Service`, wire it into `App.__init__` (`app.py`), expose it
    via a subcommand/menu entry.
 4. **New side-effect store** (e.g. swapping Mongo for something else) →
    implement the `ActivityLogger` Protocol in `database/` (or a new
