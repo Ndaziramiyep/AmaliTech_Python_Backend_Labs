@@ -1,4 +1,4 @@
-"""Data access for the feed timeline, with the query also kept standalone at queries/feed_timeline.sql for the EXPLAIN ANALYZE writeup in docs/schema_design.md."""
+"""Data access for the feed timeline, with the query also kept standalone at queries/feed_timeline.sql for the EXPLAIN ANALYZE writeup in README.md."""
 from typing import Any, Sequence
 
 from social.models import Post

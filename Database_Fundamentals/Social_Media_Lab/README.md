@@ -30,19 +30,18 @@ fakes for those same protocols instead.
 
 Five tables, normalized to 3NF: no derived/cached columns (e.g. no stored
 `like_count`), no repeating groups, and every non-key attribute depends on
-nothing but its table's whole key — see
-[docs/schema_design.md](docs/schema_design.md) for the full column-by-column
-justification. This is the same DDL `src/social/database/schema.py` creates
-automatically the first time the app connects (see [Setup](#setup)):
+nothing but its table's whole key. This is the same DDL
+`src/social/database/schema.py` creates automatically the first time the app
+connects (see [Setup](#setup)):
 
 ```mermaid
 erDiagram
-    USERS ||--o{ POSTS      : authors
-    USERS ||--o{ COMMENTS   : authors
+    USERS ||--o{ POSTS      : publishes
+    USERS ||--o{ COMMENTS   : writes
     POSTS ||--o{ COMMENTS   : has
     USERS ||--o{ FOLLOWERS  : "follows / is followed by"
     USERS ||--o{ LIKES      : likes
-    POSTS ||--o{ LIKES      : "liked by"
+    POSTS ||--o{ LIKES      : receives
 
     USERS {
         bigint      id             PK
@@ -90,22 +89,110 @@ associative tables whose composite primary key is built entirely from their
 two foreign keys, which also doubles as the index that prevents a duplicate
 edge.
 
+### One line per relationship, not two
+
 `FOLLOWERS` is drawn as a single self-referencing edge on `USERS`, not two:
 `follower_id` and `followee_id` are both `users.id`, so "follows" and "is
-followed by" are the same edge viewed from either end, not two different
-relationships. `LIKES`, by contrast, sits between two genuinely different
-entities (a user, and the post they liked), so `USERS`↔`LIKES` and
-`POSTS`↔`LIKES` are two distinct lines, not a duplicate of one relationship.
-The full rationale, plus the constraints a diagram can't show
-(`chk_followers_no_self_follow`, `ON DELETE CASCADE` on every foreign key),
-live in [docs/er_diagram.md](docs/er_diagram.md). For how the application
-code itself is structured and how a request flows through it end to end,
-see [docs/how_it_works.md](docs/how_it_works.md).
+followed by" are the same edge viewed from either end — drawing it a second
+time would just repeat that one relationship under a different label.
+`chk_followers_no_self_follow` (enforced in the schema, invisible to a
+diagram) blocks a user from following themselves.
+
+`LIKES`, by contrast, sits between two genuinely different entities — a user
+and the post they liked — so `USERS`↔`LIKES` and `POSTS`↔`LIKES` are two
+distinct relationships, not a duplicate of one. The same reasoning gives
+`USERS`↔`COMMENTS` and `POSTS`↔`COMMENTS` their own lines: a comment has
+exactly one author *and* belongs to exactly one post, which are two
+different facts about the same row, not the same fact stated twice. Every
+relationship above also carries its own verb (`publishes` / `writes` / `has`
+/ `follows…` / `likes` / `receives`), so no two edges share a label either.
+
+`ON DELETE CASCADE` on every foreign key means deleting a user or post
+removes everything that depends on it (their comments, likes, follow edges,
+posts) rather than leaving orphans.
+
+### Normalization (3NF)
+
+A relation is in 3NF when every non-key attribute depends on the whole key,
+nothing but the key, and no non-key attribute depends on another non-key
+attribute. All five tables qualify:
+
+- **users** — `username`, `email`, `password_hash`, `created_at`,
+  `full_name`, `bio`, `is_active` each describe the user identified by `id`
+  directly, and none of them determines another.
+- **posts** — `author_id`, `body`, `metadata`, `created_at` depend only on
+  `id`. `metadata` (JSONB) holds free-form, per-post attributes (tags,
+  location) — a deliberate denormalization for schema flexibility, not a
+  3NF violation, since nothing in it determines or is determined by `body`
+  or `author_id`.
+- **comments** — `body` and `created_at` depend only on `id`; `post_id` and
+  `author_id` are foreign keys, not derived attributes.
+- **followers** / **likes** — pure associative tables whose only non-key
+  attribute, `created_at`, depends on the *whole* composite key
+  (`(follower_id, followee_id)` / `(user_id, post_id)`) — the moment that
+  specific edge was created — never on either column alone.
+
+No table stores a value derivable from other columns (e.g. no cached
+`like_count` on `posts`), so all five satisfy 1NF, 2NF, and 3NF together.
+
+### Indexing & query performance
+
+- `idx_posts_author_id`, `idx_comments_post_id`, `idx_comments_author_id` —
+  support the FK lookups implied by cascading deletes and basic joins.
+- `followers_pkey` (composite B-tree on `follower_id, followee_id`) —
+  doubles as the uniqueness constraint on a follow edge and as the access
+  path the feed timeline query uses: given a `follower_id`, find every
+  `followee_id`.
+- `idx_posts_author_created_at` (`author_id, created_at DESC`) — lets the
+  feed timeline query fetch each followed author's posts pre-sorted,
+  avoiding a full sort after the join.
+- `idx_likes_post_id` — supports the trending-posts aggregation, which
+  groups likes by `post_id` over a recent time window.
+
+**`EXPLAIN ANALYZE`, feed timeline query:** seeded 500 users, ~30 follow
+edges/user (15,000 rows), 50 posts/user (25,000 rows), then ran
+`EXPLAIN (ANALYZE, BUFFERS)` on `queries/feed_timeline.sql` for one follower
+(30 followees, ~1,500 candidate posts, `LIMIT 20`) before and after adding
+`followers_pkey` / `idx_posts_author_created_at`:
+
+```text
+Before (no followers_pkey, no idx_posts_author_created_at):
+Limit  (actual time=5.993..5.999 rows=20 loops=1)
+  ->  Sort  (actual time=5.992..5.995 rows=20 loops=1)
+        ->  Hash Join  (actual time=1.088..5.356 rows=1500 loops=1)
+              ->  Seq Scan on posts p  (rows=25000 loops=1)
+              ->  Hash
+                    ->  Seq Scan on followers f  (rows=30 loops=1)
+                          Filter: (follower_id = 1)
+                          Rows Removed by Filter: 14970
+Execution Time: 6.034 ms
+
+After:
+Limit  (actual time=3.533..3.537 rows=20 loops=1)
+  ->  Sort  (actual time=3.531..3.534 rows=20 loops=1)
+        ->  Hash Join  (actual time=0.195..3.119 rows=1500 loops=1)
+              ->  Seq Scan on posts p  (rows=25000 loops=1)
+              ->  Hash
+                    ->  Bitmap Heap Scan on followers f  (rows=30 loops=1)
+                          ->  Bitmap Index Scan on followers_pkey
+                                Index Cond: (follower_id = 1)
+Execution Time: 3.571 ms
+```
+
+`followers_pkey` turned "scan all 15,000 follow edges, throw away 14,970"
+into a direct index lookup for this follower's ~30 followees — the dominant
+win (6.03ms → 3.57ms, ~40% less time). `idx_posts_author_created_at` is
+**not** used here: at this selectivity (30 of 500 authors, ~1,500 of 25,000
+posts), one sequential scan + hash join + top-N heapsort beats 30 separate
+per-author index probes. That index earns its keep at higher post-table
+scale, or on the single-author query it also serves —
+`SELECT ... FROM posts WHERE author_id = %s ORDER BY created_at DESC` —
+via index-only ordering with no sort step, regardless of table size.
 
 ## Project layout
 
 ```text
-queries/          standalone SQL for the queries analyzed in docs/
+queries/          standalone SQL for the queries analyzed above (Indexing & query performance)
 scripts/          seed_data.py — optional demo-data loader
 src/social/
   models/         one dataclass per file: User, Post, Comment, Follower, Like
@@ -120,7 +207,6 @@ src/social/
   cli/            __main__.py (argparse + main()), interactive.py (REPL)
 tests/
   unit/           fakes-based, no infrastructure required
-docs/             schema_design.md, er_diagram.md, how_it_works.md
 main.py           `python main.py ...` without installing the package
 ```
 
@@ -128,12 +214,11 @@ main.py           `python main.py ...` without installing the package
 
 Postgres, Redis, and Mongo just need to be *reachable* somewhere — this
 project doesn't care whether that's Docker, a locally installed service, or
-anything else, and there's no migration step: `App` creates every table and
-index it needs itself, the first time it connects (see
-[Seed data](docs/how_it_works.md#seed-data) and
-[The composition root](docs/how_it_works.md#the-composition-root-why-app-exists)
-for how). `docker-compose.yml` is provided purely as a convenience for
-getting all three running locally in one command; using it is optional.
+anything else, and there's no migration step: `App.__init__`
+(`src/social/app.py`) creates every table and index it needs itself, the
+first time it connects. `docker-compose.yml` is provided purely as a
+convenience for getting all three running locally in one command; using it
+is optional.
 
 ```bash
 docker compose up -d              # optional convenience: Postgres, Redis, Mongo in containers

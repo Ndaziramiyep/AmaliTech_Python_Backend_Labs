@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Posts: authored content. metadata holds variable, non-relational
 -- attributes (tags, location) that don't participate in functional
 -- dependencies with the rest of the row, so a single JSONB column doesn't
--- violate 3NF (see docs/schema_design.md).
+-- violate 3NF (see README.md, "Normalization (3NF)").
 CREATE TABLE IF NOT EXISTS posts (
     id BIGSERIAL PRIMARY KEY,
     author_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
