@@ -98,6 +98,25 @@ the standard surrogate-key convention — so when reading the DDL directly,
 mentally substitute `users.id` for this diagram's `user_id`, and likewise
 for `posts`/`comments`.
 
+A foreign key is named for the *role* it plays, not just the table it
+targets — several columns below look different but all point at the exact
+same primary key:
+
+| This column | ...is a foreign key to |
+| ------------ | ------------------------ |
+| `posts.author_id`, `comments.author_id` | `users.user_id` |
+| `followers.follower_id`, `followers.followee_id` | `users.user_id` (both — see below) |
+| `likes.user_id` | `users.user_id` |
+| `comments.post_id`, `likes.post_id` | `posts.post_id` |
+
+`followers` is *why* role-based names matter rather than being pure
+inconsistency: it needs two separate references to `users.user_id` in the
+same row (who's following, who's being followed), so both can't be called
+`user_id` — there'd be no way to tell them apart, and no way to even
+declare two columns with the same name in one table. `likes` only ever
+references a user in one role ("who liked this"), so `user_id` is
+unambiguous there without needing a more specific name.
+
 ### Why `USERS`↔`COMMENTS` exists alongside `USERS`↔`POSTS`↔`COMMENTS`
 
 `COMMENTS` sits between two tables (`USERS` and `POSTS`) that are *also*
