@@ -44,7 +44,7 @@ erDiagram
     USERS ||--o{ FOLLOWERS  : "follows / is followed by"
 
     USERS {
-        bigint      id             PK
+        bigint      user_id        PK
         varchar     username       UK
         varchar     email          UK
         varchar     password_hash
@@ -55,7 +55,7 @@ erDiagram
     }
 
     POSTS {
-        bigint      id           PK
+        bigint      post_id      PK
         bigint      author_id    FK
         text        body
         jsonb       metadata
@@ -63,7 +63,7 @@ erDiagram
     }
 
     COMMENTS {
-        bigint      id           PK
+        bigint      comment_id   PK
         bigint      post_id      FK
         bigint      author_id    FK
         text        body
@@ -88,6 +88,15 @@ erDiagram
 associative tables whose composite primary key is built entirely from their
 two foreign keys, which also doubles as the index that prevents a duplicate
 edge.
+
+Each table's primary key is named after the table it belongs to
+(`user_id`, `post_id`, `comment_id`) so it reads the same way here as it
+does everywhere it's referenced as a foreign key (`author_id`, `post_id`,
+`follower_id`/`followee_id`, ...). The generated schema itself
+(`src/social/database/schema.py`) still names these columns plain `id` —
+the standard surrogate-key convention — so when reading the DDL directly,
+mentally substitute `users.id` for this diagram's `user_id`, and likewise
+for `posts`/`comments`.
 
 ### Why `USERS`↔`COMMENTS` exists alongside `USERS`↔`POSTS`↔`COMMENTS`
 
@@ -146,6 +155,19 @@ attribute. All five tables qualify:
 
 No table stores a value derivable from other columns (e.g. no cached
 `like_count` on `posts`), so all five satisfy 1NF, 2NF, and 3NF together.
+
+### ACID guarantees
+
+An ERD can only show half of ACID directly — the constraints baked into the
+schema. The other half is how the app opens and closes a transaction around
+them. Both halves matter, so here's where each property actually comes from:
+
+| Property | How it's guaranteed |
+| -------- | -------------------- |
+| **Atomicity** | Every service call opens one `PostgresUnitOfWork` (`src/social/database/unit_of_work.py`) — one connection, one cursor, one transaction. `__exit__` rolls back automatically if the block raised, and rows only become visible to anyone else after an explicit `uow.commit()`. A use case's writes either all land or none do. |
+| **Consistency** | Enforced *declaratively* in `src/social/database/schema.py`, not just in application code: `NOT NULL` and `UNIQUE` on `users.username`/`email`, `FOREIGN KEY ... ON DELETE CASCADE` on every reference (so a comment/post/like/follow can never outlive the row it points to), and `CONSTRAINT chk_followers_no_self_follow CHECK (follower_id <> followee_id)`. A transaction that would violate any of these is rejected by Postgres itself and rolled back — the database can't reach an invalid state no matter what the app does. |
+| **Isolation** | Each service call gets its *own* connection from the pool via `uow_factory()` (never one connection shared across calls), running at Postgres's default `READ COMMITTED` level, so no transaction ever sees another's uncommitted writes. The composite primary keys on `followers` (`follower_id, followee_id`) and `likes` (`user_id, post_id`) also mean two concurrent "follow the same person twice" or "like the same post twice" transactions can't both succeed — the loser gets a unique-violation instead of silently double-inserting. |
+| **Durability** | Once `uow.commit()` returns, Postgres's write-ahead log (WAL) is what makes that write survive a crash — this is Postgres's own guarantee, not something this app implements. The app's only responsibility is to call `commit()` explicitly and only once a transaction is known-good (see Atomicity above), rather than relying on autocommit to paper over a partially-applied change. |
 
 ### Indexing & query performance
 
