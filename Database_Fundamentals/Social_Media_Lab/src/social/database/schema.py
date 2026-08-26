@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts (author_id);
 CREATE INDEX IF NOT EXISTS idx_posts_author_created_at ON posts (author_id, created_at DESC);
+-- Supports PostgresPostRepository.list_recent's global
+-- ORDER BY created_at DESC, id DESC, LIMIT %s: without this, that query
+-- has no per-author filter to narrow on, so it seq-scans and sorts the
+-- whole table every call.
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts (created_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS comments (
     id BIGSERIAL PRIMARY KEY,
@@ -36,6 +41,11 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments (post_id);
 CREATE INDEX IF NOT EXISTS idx_comments_author_id ON comments (author_id);
+-- Supports PostgresCommentRepository.list_by_post's
+-- WHERE post_id = %s ORDER BY created_at ASC: idx_comments_post_id alone
+-- finds the right rows but still needs a separate sort step, since it
+-- isn't ordered by created_at.
+CREATE INDEX IF NOT EXISTS idx_comments_post_created_at ON comments (post_id, created_at);
 
 -- Composite primary key doubles as the uniqueness constraint on a follow
 -- edge and as the feed timeline's access path: given a follower_id, find
@@ -47,6 +57,12 @@ CREATE TABLE IF NOT EXISTS followers (
     PRIMARY KEY (follower_id, followee_id),
     CONSTRAINT chk_followers_no_self_follow CHECK (follower_id <> followee_id)
 );
+-- The (follower_id, followee_id) primary key above already supports
+-- list_following (WHERE follower_id = %s), since follower_id leads it.
+-- It does nothing for the reverse direction: list_followers
+-- (WHERE followee_id = %s ORDER BY created_at DESC) had no supporting
+-- index at all and fell back to a full sequential scan.
+CREATE INDEX IF NOT EXISTS idx_followers_followee_id ON followers (followee_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS likes (
     user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,

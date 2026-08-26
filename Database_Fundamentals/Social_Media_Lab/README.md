@@ -151,6 +151,19 @@ time would just repeat that one relationship under a different label.
 `chk_followers_no_self_follow` (enforced in the schema, invisible to a
 diagram) blocks a user from following themselves.
 
+**This is a many-to-many relationship** — any user can follow many users,
+and be followed by many users — modeled the only correct relational way:
+via `followers` as an associative/junction table between `users` and
+itself, rather than, say, an array column on `users`. The `||--o{` edge in
+the diagram above is the standard way an ERD draws *half* of a many-to-many
+relationship (`USERS` to the junction table); since both sides of this
+particular M:N are the same `USERS` table, one edge captures the whole
+relationship instead of two. The composite primary key
+`(follower_id, followee_id)` is what actually enforces the "many-to-many,
+no duplicate edge" semantics: either column alone repeats freely (a user
+can appear in many rows as a follower and in many rows as a followee), but
+the *pair* must be unique.
+
 ### Normalization (3NF)
 
 A relation is in 3NF when every non-key attribute depends on the whole key,
@@ -195,12 +208,27 @@ them. Both halves matter, so here's where each property actually comes from:
 - `followers_pkey` (composite B-tree on `follower_id, followee_id`) —
   doubles as the uniqueness constraint on a follow edge and as the access
   path the feed timeline query uses: given a `follower_id`, find every
-  `followee_id`.
+  `followee_id`. It also already covers `PostgresFollowerRepository.
+  list_following` (`WHERE follower_id = %s`), since `follower_id` leads it.
 - `idx_posts_author_created_at` (`author_id, created_at DESC`) — lets the
   feed timeline query fetch each followed author's posts pre-sorted,
   avoiding a full sort after the join.
 - `idx_likes_post_id` — supports the trending-posts aggregation, which
   groups likes by `post_id` over a recent time window.
+- `idx_posts_created_at` (`created_at DESC, id DESC`) — supports
+  `PostgresPostRepository.list_recent`'s global, un-filtered
+  `ORDER BY created_at DESC, id DESC LIMIT %s`. Every other posts index is
+  led by `author_id`, so without this one that query had nothing to use but
+  a full scan + sort.
+- `idx_comments_post_created_at` (`post_id, created_at`) — supports
+  `PostgresCommentRepository.list_by_post`'s `WHERE post_id = %s
+  ORDER BY created_at ASC`; `idx_comments_post_id` alone finds the rows but
+  still needs a separate sort step.
+- `idx_followers_followee_id` (`followee_id, created_at DESC`) — supports
+  `PostgresFollowerRepository.list_followers` (`WHERE followee_id = %s
+  ORDER BY created_at DESC`), the reverse direction of `followers_pkey`.
+  This was a genuine gap: nothing indexed `followee_id` at all, so asking
+  "who follows this user" was a full table scan.
 
 **`EXPLAIN ANALYZE`, feed timeline query:** seeded 500 users, ~30 follow
 edges/user (15,000 rows), 50 posts/user (25,000 rows), then ran
@@ -242,10 +270,66 @@ scale, or on the single-author query it also serves —
 `SELECT ... FROM posts WHERE author_id = %s ORDER BY created_at DESC` —
 via index-only ordering with no sort step, regardless of table size.
 
+**`EXPLAIN ANALYZE`, the three newer indexes:** re-ran at 10x scale (5,006
+users, 250,307 posts, 149,724 follow edges — `queries/bulk_seed.sql`) to
+check the three gaps identified above. Two of the three access patterns had
+*no* supporting index at all before this pass, not just a suboptimal one:
+
+```text
+list_recent (global feed) — WHERE-less ORDER BY created_at DESC, id DESC LIMIT 20:
+
+Before (no idx_posts_created_at):
+Limit  (actual time=36.412..40.206 rows=20 loops=1)
+  ->  Gather Merge  (actual time=36.410..40.200 rows=20 loops=1)
+        ->  Sort  (actual time=28.762..28.766 rows=17 loops=2)
+              Sort Method: top-N heapsort  Memory: 29kB
+              ->  Parallel Seq Scan on posts  (rows=125154 loops=2)
+Execution Time: 40.858 ms
+
+After:
+Limit  (actual time=0.060..0.080 rows=20 loops=1)
+  ->  Index Scan using idx_posts_created_at on posts  (actual time=0.060..0.077 rows=20 loops=1)
+Execution Time: 0.098 ms
+
+list_followers — WHERE followee_id = 688 ORDER BY created_at DESC:
+
+Before (no index on followee_id at all):
+Sort  (actual time=5.731..5.734 rows=51 loops=1)
+  ->  Seq Scan on followers  (actual time=0.044..5.706 rows=51 loops=1)
+        Filter: (followee_id = 688)
+        Rows Removed by Filter: 149673
+Execution Time: 5.765 ms
+
+After:
+Sort  (actual time=0.109..0.112 rows=51 loops=1)
+  ->  Bitmap Heap Scan on followers  (actual time=0.037..0.086 rows=51 loops=1)
+        ->  Bitmap Index Scan on idx_followers_followee_id
+              Index Cond: (followee_id = 688)
+Execution Time: 0.134 ms
+```
+
+`idx_posts_created_at` is the largest win of the three (~417x, 40.9ms →
+0.10ms): without it, the global feed had no filter to narrow on at all, so
+every call sorted the entire 250k-row table (parallelized, but still a full
+scan). `idx_followers_followee_id` fixed the genuine blind spot noted
+above — going from "scan 149,724 rows to find 51" to a direct index lookup
+(~43x, 5.77ms → 0.13ms).
+
+`idx_comments_post_created_at`, by contrast, is **not** yet chosen by the
+planner at this data's actual scale: each post here has only 2–3 comments
+(seeded uniformly), so `idx_comments_post_id` already narrows to a handful
+of rows and the leftover sort is negligible either way — the same "index
+exists for an access pattern, not yet the cheapest plan at this
+distribution" situation as `idx_posts_author_created_at` above. It earns
+its keep once some posts accumulate hundreds/thousands of comments (a
+viral-post shape this uniform seed doesn't model) rather than a handful
+each.
+
 ## Project layout
 
 ```text
 queries/          standalone SQL for the queries analyzed above (Indexing & query performance)
+                  bulk_seed.sql — 5,000+ user/post/follow/like/comment loader for EXPLAIN ANALYZE at scale
 scripts/          seed_data.py — optional demo-data loader
 src/social/
   models/         one dataclass per file: User, Post, Comment, Follower, Like
