@@ -41,7 +41,7 @@ erDiagram
     POSTS ||--o{ COMMENTS   : has
     USERS ||--o{ LIKES      : likes
     POSTS ||--o{ LIKES      : receives
-    USERS ||--o{ FOLLOWERS  : "follows / is followed by"
+    USERS }o--o{ FOLLOWERS  : "follows / is followed by"
 
     USERS {
         bigint      user_id        PK
@@ -152,17 +152,14 @@ time would just repeat that one relationship under a different label.
 diagram) blocks a user from following themselves.
 
 **This is a many-to-many relationship** — any user can follow many users,
-and be followed by many users — modeled the only correct relational way:
-via `followers` as an associative/junction table between `users` and
-itself, rather than, say, an array column on `users`. The `||--o{` edge in
-the diagram above is the standard way an ERD draws *half* of a many-to-many
-relationship (`USERS` to the junction table); since both sides of this
-particular M:N are the same `USERS` table, one edge captures the whole
-relationship instead of two. The composite primary key
-`(follower_id, followee_id)` is what actually enforces the "many-to-many,
-no duplicate edge" semantics: either column alone repeats freely (a user
-can appear in many rows as a follower and in many rows as a followee), but
-the *pair* must be unique.
+and be followed by many users — so the diagram draws it with a crow's-foot
+at both ends (`}o--o{`), not a single-ended `||--o{`. It's modeled the only
+correct relational way: via `followers` as an associative/junction table
+between `users` and itself, rather than, say, an array column on `users`.
+The composite primary key `(follower_id, followee_id)` is what actually
+enforces the "many-to-many, no duplicate edge" semantics: either column
+alone repeats freely (a user can appear in many rows as a follower and in
+many rows as a followee), but the *pair* must be unique.
 
 ### Normalization (3NF)
 
