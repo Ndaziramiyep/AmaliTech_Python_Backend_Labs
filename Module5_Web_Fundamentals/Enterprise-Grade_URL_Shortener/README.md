@@ -43,7 +43,7 @@ A simple, beginner-friendly URL shortener microservice built with Django REST Fr
 3. **Access the application**
    - API Documentation (Swagger): http://localhost:8000/api/docs/
    - Django Admin: http://localhost:8000/admin/
-   - API Endpoint: http://localhost:8000/api/shorten/
+   - API Endpoint: http://localhost:8000/api/urls/
 
 ### Option 2: Run Locally (Without Docker)
 
@@ -58,18 +58,25 @@ A simple, beginner-friendly URL shortener microservice built with Django REST Fr
    pip install -r requirements.txt
    ```
 
-3. **Run migrations**
+3. **Copy `.env.example` to `.env` and fill in your values**
    ```bash
-   cd url
+   cp .env.example .env
+   ```
+   Local Postgres and Redis can be started with `docker-compose up -d db redis`
+   (the Postgres container is exposed on host port `5433` to avoid clashing
+   with a locally installed Postgres on `5432`; see `POSTGRES_PORT` in `.env`).
+
+4. **Run migrations**
+   ```bash
    python manage.py migrate
    ```
 
-4. **Create superuser** (optional, for admin access)
+5. **Create superuser** (optional, for admin access)
    ```bash
    python manage.py createsuperuser
    ```
 
-5. **Start development server**
+6. **Start development server**
    ```bash
    python manage.py runserver
    ```
@@ -80,7 +87,7 @@ A simple, beginner-friendly URL shortener microservice built with Django REST Fr
 
 ### 1. Create Short URL
 
-**Endpoint**: `POST /api/shorten/`
+**Endpoint**: `POST /api/urls/`
 
 **Request Body**:
 ```json
@@ -95,13 +102,14 @@ A simple, beginner-friendly URL shortener microservice built with Django REST Fr
   "id": 1,
   "original_url": "https://www.example.com",
   "short_url": "abc123",
+  "short_link": "http://localhost:8000/abc123/",
   "created_at": "2026-01-23T14:00:00Z"
 }
 ```
 
 **cURL Example**:
 ```bash
-curl -X POST http://localhost:8000/api/shorten/ \
+curl -X POST http://localhost:8000/api/urls/ \
   -H "Content-Type: application/json" \
   -d '{"original_url": "https://www.google.com"}'
 ```
@@ -120,8 +128,7 @@ curl -X POST http://localhost:8000/api/shorten/ \
 
 ### Run Tests
 ```bash
-cd url
-python manage.py test url_shortern
+python manage.py test url_shortener
 ```
 
 ### Test Coverage
@@ -134,35 +141,35 @@ The test suite includes:
 ## 📁 Project Structure
 
 ```
-module5/
-├── url/                          # Django project root
-│   ├── url/                      # Project settings
-│   │   ├── settings.py          # Django settings with DRF config
-│   │   ├── urls.py              # Main URL routing + Swagger endpoints
-│   │   └── wsgi.py              # WSGI configuration
-│   ├── url_shortern/            # Main application
-│   │   ├── models.py            # Url model
-│   │   ├── serializer.py        # DRF serializers
-│   │   ├── services.py          # Business logic (URL shortening)
-│   │   ├── views.py             # API views (Create, Redirect)
-│   │   ├── urls.py              # App URL routing
-│   │   ├── admin.py             # Admin configuration
-│   │   └── tests.py             # Test suite
-│   └── manage.py                # Django management script
-├── Dockerfile                    # Multi-stage Docker build
-├── docker-compose.yml           # Docker services orchestration
-├── requirements.txt             # Python dependencies
-└── README.md                    # This file
+Enterprise-Grade_URL_Shortener/
+├── Config/                       # Django project settings (modular config app)
+│   ├── settings.py               # Settings, loaded from environment variables (.env)
+│   ├── urls.py                   # Root URL routing + Swagger endpoints
+│   ├── wsgi.py                   # WSGI configuration
+│   └── asgi.py                   # ASGI configuration
+├── url_shortener/                # Main application
+│   ├── models.py                 # Url model
+│   ├── admin.py                  # Admin configuration
+│   ├── domain/                   # Abstract interfaces (generator, repository, cache)
+│   ├── services/                 # Business logic implementing the domain interfaces
+│   ├── api/                      # DRF serializers, views, and URL routing
+│   └── tests/                    # Test suite (models, services, API)
+├── manage.py                     # Django management script
+├── Dockerfile                    # Docker image build
+├── docker-compose.yml            # db (Postgres) + redis + web services
+├── requirements.txt              # Python dependencies
+├── .env / .env.example           # Environment configuration
+└── README.md                     # This file
 ```
 
 ## 🎯 API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/shorten/` | Create a new short URL |
+| POST | `/api/urls/` | Create a new short URL |
 | GET | `/{short_code}/` | Redirect to original URL |
 | GET | `/api/schema/` | OpenAPI schema (JSON) |
-| GET | `/api/schema/swagger-ui/` | Interactive API documentation |
+| GET | `/api/docs/` | Interactive Swagger UI documentation |
 | GET | `/admin/` | Django admin panel |
 
 ## 🐛 Troubleshooting
@@ -175,10 +182,15 @@ module5/
 
 ### Migration Issues
 ```bash
-cd url
 python manage.py makemigrations
 python manage.py migrate
 ```
+
+### Postgres Port Conflict
+If port `5432` is already used by a locally installed Postgres service,
+the `db` container in `docker-compose.yml` is mapped to host port `5433`
+instead. Set `POSTGRES_PORT=5433` in `.env` when running Django outside
+Docker; inside Docker the `web` service always talks to `db:5432`.
 
 ## 📝 Development Notes
 

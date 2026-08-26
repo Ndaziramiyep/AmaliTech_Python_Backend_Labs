@@ -8,4 +8,3 @@ class UrlAdmin(admin.ModelAdmin):
     search_fields = ['short_url', 'original_url']
     readonly_fields = ['short_url', 'created_at']
     list_filter = ['created_at']
-
