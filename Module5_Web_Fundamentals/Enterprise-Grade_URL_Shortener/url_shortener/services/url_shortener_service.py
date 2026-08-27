@@ -1,6 +1,7 @@
 from typing import Optional
 
 from django.conf import settings
+from django.contrib.auth.models import AbstractBaseUser
 
 from url_shortener.domain.interfaces import ShortCodeGenerator, UrlCacheBackend, UrlRepository
 from url_shortener.models import Url
@@ -23,9 +24,9 @@ class UrlShortenerService:
         self._cache = cache_backend or RedisUrlCache()
         self._cache_timeout = settings.URL_CACHE_TIMEOUT_SECONDS
 
-    def create_short_url(self, original_url: str) -> Url:
+    def create_short_url(self, original_url: str, owner: AbstractBaseUser) -> Url:
         short_code = self._generate_unique_code()
-        url_obj = self._repository.create(original_url, short_code)
+        url_obj = self._repository.create(original_url, short_code, owner)
         self._cache.set(short_code, url_obj.original_url, timeout=self._cache_timeout)
         return url_obj
 

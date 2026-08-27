@@ -46,11 +46,14 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "url_shortener",
     "rest_framework",
+    "rest_framework.authtoken",
     "drf_spectacular",
+    "corsheaders",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -137,6 +140,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
 }
 
 # drf-spectacular Configuration
@@ -162,3 +172,10 @@ BASE_URL = env('BASE_URL', default='http://localhost:8000')
 
 # Seconds a short_code -> original_url lookup is kept in the cache
 URL_CACHE_TIMEOUT_SECONDS = env.int('URL_CACHE_TIMEOUT_SECONDS', default=3600)
+
+# CORS Configuration
+# In development, allow every origin so any local frontend can call the API
+# without extra setup. In production, set CORS_ALLOWED_ORIGINS explicitly
+# and leave CORS_ALLOW_ALL_ORIGINS unset (or False).
+CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=DEBUG)
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])

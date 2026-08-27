@@ -16,11 +16,12 @@ class UrlCreateSerializer(serializers.Serializer):
 
 class UrlSerializer(serializers.ModelSerializer):
     short_link = serializers.SerializerMethodField()
+    owner = serializers.ReadOnlyField(source='owner.username')
 
     class Meta:
         model = Url
-        fields = ['id', 'original_url', 'short_url', 'short_link', 'created_at']
-        read_only_fields = ['id', 'short_url', 'created_at']
+        fields = ['id', 'original_url', 'short_url', 'short_link', 'owner', 'created_at']
+        read_only_fields = ['id', 'short_url', 'owner', 'created_at']
 
     @extend_schema_field(serializers.URLField())
     def get_short_link(self, obj):

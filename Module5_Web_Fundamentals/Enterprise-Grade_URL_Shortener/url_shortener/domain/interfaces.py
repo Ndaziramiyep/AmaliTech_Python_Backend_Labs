@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
+from django.contrib.auth.models import AbstractBaseUser
+
 from url_shortener.models import Url
 
 
@@ -20,7 +22,7 @@ class UrlRepository(ABC):
         ...
 
     @abstractmethod
-    def create(self, original_url: str, short_code: str) -> Url:
+    def create(self, original_url: str, short_code: str, owner: AbstractBaseUser) -> Url:
         ...
 
     @abstractmethod
