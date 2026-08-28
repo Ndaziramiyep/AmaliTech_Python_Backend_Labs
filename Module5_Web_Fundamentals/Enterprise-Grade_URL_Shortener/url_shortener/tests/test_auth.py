@@ -6,22 +6,47 @@ from rest_framework.test import APITestCase
 
 class RegisterAPITest(APITestCase):
     def test_register_success(self):
-        data = {'username': 'alice', 'password': 'password123'}
+        data = {
+            'email': 'alice@example.com',
+            'password': 'StrongPass123',
+            'confirm_password': 'StrongPass123',
+        }
         response = self.client.post(reverse('register'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('token', response.data)
-        self.assertTrue(User.objects.filter(username='alice').exists())
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertTrue(User.objects.filter(email='alice@example.com').exists())
 
-    def test_register_duplicate_username(self):
-        User.objects.create_user(username='alice', password='password123')
-        data = {'username': 'alice', 'password': 'password123'}
+    def test_register_duplicate_email(self):
+        User.objects.create_user(
+            username='alice@example.com', email='alice@example.com', password='StrongPass123'
+        )
+        data = {
+            'email': 'alice@example.com',
+            'password': 'StrongPass123',
+            'confirm_password': 'StrongPass123',
+        }
         response = self.client.post(reverse('register'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_register_short_password(self):
-        data = {'username': 'alice', 'password': 'short'}
+    def test_register_password_mismatch(self):
+        data = {
+            'email': 'alice@example.com',
+            'password': 'StrongPass123',
+            'confirm_password': 'DifferentPass123',
+        }
+        response = self.client.post(reverse('register'), data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_register_weak_password(self):
+        data = {
+            'email': 'alice@example.com',
+            'password': 'short',
+            'confirm_password': 'short',
+        }
         response = self.client.post(reverse('register'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -29,17 +54,20 @@ class RegisterAPITest(APITestCase):
 
 class LoginAPITest(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='alice', password='password123')
+        self.user = User.objects.create_user(
+            username='alice@example.com', email='alice@example.com', password='StrongPass123'
+        )
 
     def test_login_success(self):
-        data = {'username': 'alice', 'password': 'password123'}
+        data = {'email': 'alice@example.com', 'password': 'StrongPass123'}
         response = self.client.post(reverse('login'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('token', response.data)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
 
     def test_login_invalid_credentials(self):
-        data = {'username': 'alice', 'password': 'wrong-password'}
+        data = {'email': 'alice@example.com', 'password': 'wrong-password'}
         response = self.client.post(reverse('login'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

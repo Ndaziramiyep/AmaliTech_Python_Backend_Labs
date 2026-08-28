@@ -1,19 +1,21 @@
 from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from url_shortener.models import Url
 
 
 class CreateShortUrlAPITest(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="alice", password="password123")
-        self.token = Token.objects.create(user=self.user)
+        self.user = User.objects.create_user(
+            username="alice", email="alice@example.com", password="password123"
+        )
+        self.access_token = str(RefreshToken.for_user(self.user).access_token)
 
     def authenticate(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.access_token}")
 
     def test_create_requires_authentication(self):
         data = {'original_url': 'https://www.example.com'}

@@ -14,6 +14,11 @@ class UrlCreateSerializer(serializers.Serializer):
         return value
 
 
+class ResolveUrlSerializer(serializers.Serializer):
+    short_url = serializers.CharField()
+    original_url = serializers.URLField()
+
+
 class UrlSerializer(serializers.ModelSerializer):
     short_link = serializers.SerializerMethodField()
     owner = serializers.ReadOnlyField(source='owner.username')
