@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 """Django's command-line utility for administrative tasks."""
-
 import os
 import sys
 
 
 def main():
-    """Set the default settings module and delegate to Django's command runner."""
+    """Run administrative tasks."""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     try:
         from django.core.management import execute_from_command_line
