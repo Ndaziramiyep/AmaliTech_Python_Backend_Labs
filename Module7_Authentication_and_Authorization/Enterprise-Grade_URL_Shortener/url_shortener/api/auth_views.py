@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -45,8 +46,13 @@ class RegisterView(APIView):
         return Response(_tokens_for_user(user), status=status.HTTP_201_CREATED)
 
 
+class LoginRateThrottle(AnonRateThrottle):
+    scope = 'login'
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
 
     @extend_schema(
         request=LoginSerializer,

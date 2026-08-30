@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -57,6 +58,7 @@ class RegisterAPITest(APITestCase):
 
 class LoginAPITest(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(
             username='alice@example.com', email='alice@example.com', password='StrongPass123'
         )
@@ -74,3 +76,12 @@ class LoginAPITest(APITestCase):
         response = self.client.post(reverse('login'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_login_rate_limited_after_five_attempts(self):
+        data = {'email': 'alice@example.com', 'password': 'wrong-password'}
+        for _ in range(5):
+            response = self.client.post(reverse('login'), data, format='json')
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        response = self.client.post(reverse('login'), data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
