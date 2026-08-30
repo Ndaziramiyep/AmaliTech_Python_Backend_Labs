@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 
 from url_shortener.api.serializers import UrlCreateSerializer, UrlSerializer, UrlUpdateSerializer
 from url_shortener.models import Click, Tag, Url
-from url_shortener.permissions import IsOwner, IsPremiumUser
+from url_shortener.permissions import IsOwnerOrReadOnly, IsPremiumUser
 from url_shortener.services.url_shortener_service import UrlShortenerService
 
 
@@ -51,7 +51,7 @@ class UrlListCreateView(APIView):
 
 
 class UrlDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
 
     def get_object(self, short_code):
         obj = get_object_or_404(Url.objects.with_related(), short_code=short_code)

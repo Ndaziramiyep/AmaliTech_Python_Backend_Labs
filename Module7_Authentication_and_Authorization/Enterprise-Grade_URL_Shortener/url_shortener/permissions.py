@@ -1,8 +1,8 @@
 from rest_framework.permissions import BasePermission
 
 
-class IsOwner(BasePermission):
-    """Grants access only to the URL's owner."""
+class IsOwnerOrReadOnly(BasePermission):
+    """Grants access only to the URL's owner; other users cannot edit or delete it."""
 
     def has_object_permission(self, request, view, obj):
         return obj.owner_id == request.user.id
