@@ -12,12 +12,17 @@ class User(AbstractUser):
         PREMIUM = 'premium', 'Premium'
         ADMIN = 'admin', 'Admin'
 
+    FREE_TIER_ACTIVE_URL_LIMIT = 10
+
     email = models.EmailField(unique=True)
     is_premium = models.BooleanField(default=False)
     tier = models.CharField(max_length=10, choices=Tier.choices, default=Tier.FREE)
 
     def __str__(self):
         return self.email
+
+    def has_premium_access(self) -> bool:
+        return self.is_premium or self.tier == self.Tier.ADMIN
 
 
 class Tag(models.Model):

@@ -63,6 +63,43 @@ class CreateShortUrlAPITest(AuthenticatedAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_free_user_cannot_use_custom_alias(self):
+        self.authenticate(self.token)
+        data = {'original_url': 'https://www.example.com', 'custom_alias': 'mylink'}
+        response = self.client.post(reverse('url-list-create'), data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_premium_user_can_use_custom_alias(self):
+        premium, premium_token = self.make_user("carol", is_premium=True)
+        self.authenticate(premium_token)
+        data = {'original_url': 'https://www.example.com', 'custom_alias': 'mylink'}
+        response = self.client.post(reverse('url-list-create'), data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['short_code'], 'mylink')
+
+    def test_free_user_limited_to_ten_active_urls(self):
+        self.authenticate(self.token)
+        for _ in range(10):
+            Url.objects.create(original_url='https://a.com', short_code=f'code{_:03d}', owner=self.user)
+
+        data = {'original_url': 'https://www.example.com'}
+        response = self.client.post(reverse('url-list-create'), data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_premium_user_not_limited_to_ten_active_urls(self):
+        premium, premium_token = self.make_user("dave", is_premium=True)
+        for i in range(10):
+            Url.objects.create(original_url='https://a.com', short_code=f'pcod{i:03d}', owner=premium)
+
+        self.authenticate(premium_token)
+        data = {'original_url': 'https://www.example.com'}
+        response = self.client.post(reverse('url-list-create'), data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
 
 class ListUrlsAPITest(AuthenticatedAPITestCase):
     def test_list_only_returns_own_urls(self):

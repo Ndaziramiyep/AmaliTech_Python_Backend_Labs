@@ -15,4 +15,4 @@ class IsPremiumUser(BasePermission):
 
     def has_permission(self, request, view):
         user = request.user
-        return bool(user and user.is_authenticated and (user.is_premium or user.tier == user.Tier.ADMIN))
+        return bool(user and user.is_authenticated and user.has_premium_access())

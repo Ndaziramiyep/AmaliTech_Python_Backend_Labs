@@ -5,7 +5,7 @@ A URL shortener microservice built with Django REST Framework, featuring JWT aut
 ## 🚀 Features
 
 - **JWT Authentication**: Register and log in with email + password; every short-URL operation is scoped to the authenticated user
-- **User Tiers**: Custom `User` model with `is_premium` and `tier` (Free / Premium / Admin)
+- **User Tiers**: Custom `User` model with `is_premium` and `tier` (Free / Premium / Admin). Free accounts are capped at 10 active URLs and cannot set a custom alias; premium/admin accounts are unlimited and get custom aliases + full analytics
 - **Rate Limiting**: Login is throttled to 5 attempts/minute per IP to slow down credential-stuffing attempts
 - **Ownership Enforcement**: `IsOwnerOrReadOnly` blocks any user from viewing, editing, or deleting a URL they don't own
 - **URL Shortening**: Convert long URLs into short, shareable links tied to their owner, with an optional custom alias, title/description/favicon metadata, and an expiry date
@@ -177,6 +177,8 @@ Response (200): `{ "access": "<new-jwt-access-token>" }`
 }
 ```
 Only `original_url` is required. Response (201) is the full `Url` representation including `short_code`, `short_link`, `tags`, `click_count`, `is_expired`, etc.
+
+Tier limits enforced here: a free-tier owner gets `403 Forbidden` if `custom_alias` is set (premium/admin only) or if they already have 10 active URLs (premium/admin are unlimited).
 
 **`GET /api/v1/urls/`** — list the authenticated user's URLs (owner `select_related`, tags `prefetch_related`)
 

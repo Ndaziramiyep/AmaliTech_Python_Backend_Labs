@@ -41,6 +41,25 @@ class UrlListCreateView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = dict(serializer.validated_data)
+
+        if not request.user.has_premium_access():
+            if data.get('custom_alias'):
+                return Response(
+                    {'custom_alias': 'Custom aliases are available to premium accounts only.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            active_count = Url.objects.active_urls().filter(owner=request.user).count()
+            if active_count >= request.user.FREE_TIER_ACTIVE_URL_LIMIT:
+                return Response(
+                    {
+                        'detail': (
+                            f'Free tier is limited to {request.user.FREE_TIER_ACTIVE_URL_LIMIT} active URLs. '
+                            'Upgrade to premium for unlimited URLs.'
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         tag_names = data.pop('tags', [])
 
         url_obj = self.service_class().create_short_url(
