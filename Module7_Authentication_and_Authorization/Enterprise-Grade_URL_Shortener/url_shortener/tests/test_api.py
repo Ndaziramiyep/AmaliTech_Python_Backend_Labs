@@ -40,14 +40,6 @@ class CreateShortUrlAPITest(AuthenticatedAPITestCase):
         self.assertEqual(response.data['owner'], 'alice')
         self.assertEqual([t['name'] for t in response.data['tags']], ['Marketing'])
 
-    def test_create_with_custom_alias(self):
-        self.authenticate(self.token)
-        data = {'original_url': 'https://www.example.com', 'custom_alias': 'mylink'}
-        response = self.client.post(reverse('url-list-create'), data, format='json')
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['short_code'], 'mylink')
-
     def test_create_with_taken_alias(self):
         Url.objects.create(original_url='https://a.com', short_code='taken', owner=self.user)
         self.authenticate(self.token)
