@@ -8,3 +8,4 @@ django-environ==0.11.2
 psycopg[binary]==3.2.10
 gunicorn==21.2.0
 django-cors-headers==4.9.0
+confluent-kafka==2.15.0

@@ -184,6 +184,12 @@ BASE_URL = env('BASE_URL', default='http://localhost:8000')
 # Seconds a short_code -> original_url lookup is kept in the cache
 URL_CACHE_TIMEOUT_SECONDS = env.int('URL_CACHE_TIMEOUT_SECONDS', default=3600)
 
+# Kafka Configuration - async click-event pipeline (see url_shortener/services/kafka_producer.py
+# and url_shortener/management/commands/consume_click_events.py)
+KAFKA_BOOTSTRAP_SERVERS = env('KAFKA_BOOTSTRAP_SERVERS', default='localhost:9092')
+KAFKA_CLICK_TOPIC = env('KAFKA_CLICK_TOPIC', default='url-clicks')
+KAFKA_CONSUMER_GROUP = env('KAFKA_CONSUMER_GROUP', default='url-shortener-click-consumer')
+
 # CORS Configuration
 # In development, allow every origin so any local frontend can call the API
 # without extra setup. In production, set CORS_ALLOWED_ORIGINS explicitly

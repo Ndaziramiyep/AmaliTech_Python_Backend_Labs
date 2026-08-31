@@ -40,3 +40,11 @@ class UrlCacheBackend(ABC):
     @abstractmethod
     def set(self, short_code: str, original_url: str, timeout: int) -> None:
         ...
+
+
+class EventPublisher(ABC):
+    """Publishes domain events to an external stream for asynchronous processing."""
+
+    @abstractmethod
+    def publish(self, topic: str, payload: dict) -> None:
+        ...
