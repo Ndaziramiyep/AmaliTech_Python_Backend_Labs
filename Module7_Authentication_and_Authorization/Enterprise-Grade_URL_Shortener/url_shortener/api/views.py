@@ -1,7 +1,9 @@
+from django.conf import settings
 from django.db.models import Count, F
 from django.db.models.functions import TruncDate
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +13,7 @@ from rest_framework.views import APIView
 from url_shortener.api.serializers import UrlCreateSerializer, UrlSerializer, UrlUpdateSerializer
 from url_shortener.models import Click, Tag, Url
 from url_shortener.permissions import IsOwnerOrReadOnly, IsPremiumUser
+from url_shortener.services.kafka_producer import KafkaEventPublisher
 from url_shortener.services.url_shortener_service import UrlShortenerService
 
 
@@ -114,6 +117,8 @@ class UrlDetailView(APIView):
 
 
 class RedirectUrlView(APIView):
+    event_publisher_class = KafkaEventPublisher
+
     @extend_schema(
         responses={302: None, 404: None},
         description=(
@@ -132,12 +137,13 @@ class RedirectUrlView(APIView):
             raise Http404
 
         Url.objects.filter(pk=url_obj.pk).update(click_count=F('click_count') + 1)
-        Click.objects.create(
-            url=url_obj,
-            ip_address=self._client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            referrer=request.META.get('HTTP_REFERER') or None,
-        )
+        self.event_publisher_class().publish(settings.KAFKA_CLICK_TOPIC, {
+            'url_id': url_obj.pk,
+            'ip_address': self._client_ip(request),
+            'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+            'referrer': request.META.get('HTTP_REFERER') or None,
+            'clicked_at': timezone.now().isoformat(),
+        })
 
         return redirect(url_obj.original_url)
 

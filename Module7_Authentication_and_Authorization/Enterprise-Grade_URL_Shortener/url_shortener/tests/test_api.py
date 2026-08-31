@@ -1,9 +1,13 @@
+from unittest.mock import patch
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from url_shortener.api.views import RedirectUrlView
 from url_shortener.models import Click, Url
 
 User = get_user_model()
@@ -145,20 +149,28 @@ class RedirectUrlAPITest(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="bob", email="bob@example.com", password="password123")
 
-    def test_redirect_success_and_logs_click(self):
-        Url.objects.create(
+    def test_redirect_success_publishes_click_event(self):
+        url_obj = Url.objects.create(
             original_url="https://www.example.com",
             short_code="test123",
             owner=self.user,
         )
-        response = self.client.get(reverse('redirect-url', kwargs={'short_code': 'test123'}))
+
+        with patch.object(RedirectUrlView, 'event_publisher_class') as mock_publisher_class:
+            response = self.client.get(reverse('redirect-url', kwargs={'short_code': 'test123'}))
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertEqual(response.url, "https://www.example.com")
 
-        url_obj = Url.objects.get(short_code='test123')
+        url_obj.refresh_from_db()
         self.assertEqual(url_obj.click_count, 1)
-        self.assertEqual(Click.objects.filter(url=url_obj).count(), 1)
+
+        mock_publish = mock_publisher_class.return_value.publish
+        mock_publish.assert_called_once()
+        topic, payload = mock_publish.call_args[0]
+        self.assertEqual(topic, settings.KAFKA_CLICK_TOPIC)
+        self.assertEqual(payload['url_id'], url_obj.pk)
+        self.assertEqual(payload['ip_address'], '127.0.0.1')
 
     def test_redirect_not_found(self):
         response = self.client.get(reverse('redirect-url', kwargs={'short_code': 'invalid'}))

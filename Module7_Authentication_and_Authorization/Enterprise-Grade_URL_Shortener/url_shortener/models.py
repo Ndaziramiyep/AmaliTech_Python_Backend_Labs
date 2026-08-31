@@ -75,7 +75,7 @@ class Url(models.Model):
 
 class Click(models.Model):
     url = models.ForeignKey(Url, on_delete=models.CASCADE, related_name='clicks')
-    clicked_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    clicked_at = models.DateTimeField(default=timezone.now, db_index=True)
     ip_address = models.GenericIPAddressField()
     city = models.CharField(max_length=100, null=True, blank=True)
     country = models.CharField(max_length=100, null=True, blank=True)
