@@ -1,48 +1,139 @@
 services:
-  db:
+  auth-db:
     image: postgres:16-alpine
-    container_name: url_shortener_db
+    container_name: auth_db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AUTH_POSTGRES_DB}
+      POSTGRES_USER: ${AUTH_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - auth_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_POSTGRES_USER} -d ${AUTH_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  url-db:
+    image: postgres:16-alpine
+    container_name: url_db
+    environment:
+      POSTGRES_DB: ${URL_POSTGRES_DB}
+      POSTGRES_USER: ${URL_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${URL_POSTGRES_PASSWORD}
+    ports:
+      - "5436:5432"
+    volumes:
+      - url_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${URL_POSTGRES_USER} -d ${URL_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  analytics-db:
+    image: postgres:16-alpine
+    container_name: analytics_db
+    environment:
+      POSTGRES_DB: ${ANALYTICS_POSTGRES_DB}
+      POSTGRES_USER: ${ANALYTICS_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${ANALYTICS_POSTGRES_PASSWORD}
+    ports:
+      - "5435:5432"
+    volumes:
+      - analytics_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ANALYTICS_POSTGRES_USER} -d ${ANALYTICS_POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: url_redis
+    container_name: url_shortener_service_redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
 
-  web:
-    build: .
-    container_name: url_shortener_web
+  auth-service:
+    build: ./services/auth-service
+    container_name: auth_service
     command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
-    env_file:
-      - .env
     environment:
-      POSTGRES_HOST: db
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${AUTH_SECRET_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      POSTGRES_DB: ${AUTH_POSTGRES_DB}
+      POSTGRES_USER: ${AUTH_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD}
+      POSTGRES_HOST: auth-db
+      POSTGRES_PORT: "5432"
+      CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    ports:
+      - "8001:8000"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+  url-service:
+    build: ./services/url-service
+    container_name: url_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    environment:
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${URL_SECRET_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      ANALYTICS_SERVICE_URL: http://analytics-service:8000
+      POSTGRES_DB: ${URL_POSTGRES_DB}
+      POSTGRES_USER: ${URL_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${URL_POSTGRES_PASSWORD}
+      POSTGRES_HOST: url-db
       POSTGRES_PORT: "5432"
       REDIS_URL: redis://redis:6379/1
+      BASE_URL: ${BASE_URL}
+      CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
     ports:
-      - "8000:8000"
+      - "8002:8000"
     depends_on:
-      db:
+      url-db:
         condition: service_healthy
       redis:
         condition: service_started
 
+  analytics-service:
+    build: ./services/analytics-service
+    container_name: analytics_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    environment:
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${ANALYTICS_SECRET_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      POSTGRES_DB: ${ANALYTICS_POSTGRES_DB}
+      POSTGRES_USER: ${ANALYTICS_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${ANALYTICS_POSTGRES_PASSWORD}
+      POSTGRES_HOST: analytics-db
+      POSTGRES_PORT: "5432"
+      CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    ports:
+      - "8003:8000"
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+
 volumes:
-  postgres_data:
+  auth_postgres_data:
+  url_postgres_data:
+  analytics_postgres_data:
   redis_data:
