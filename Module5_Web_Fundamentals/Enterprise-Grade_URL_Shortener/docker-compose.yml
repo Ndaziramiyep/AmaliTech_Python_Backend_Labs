@@ -1,9 +1,0 @@
-# Composes the whole platform from each service's own docker-compose.yml.
-# `docker compose up` here runs all three services + their databases + redis
-# together as one application, on one shared network (so url-service can
-# resolve `analytics-service` by name, etc.) — see services/*/docker-compose.yml
-# for what each service defines, and README.md for running one standalone.
-include:
-  - ./services/auth-service/docker-compose.yml
-  - ./services/url-service/docker-compose.yml
-  - ./services/analytics-service/docker-compose.yml
