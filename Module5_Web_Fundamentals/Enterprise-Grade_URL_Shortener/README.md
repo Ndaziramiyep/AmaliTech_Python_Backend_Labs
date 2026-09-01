@@ -2,9 +2,9 @@
 
 A URL shortener platform split into three independently deployable Django REST
 Framework services. Each has its own database, its own Docker image, and its
-own `docker-compose.yml` — so each one builds and runs entirely on its own —
-while the root `docker-compose.yml` `include:`s all three into one project so
-they can also run together as a single application.
+own `docker-compose.yml` — every service builds, runs, and is started
+entirely on its own; there is no root-level orchestration file tying them
+together, by design.
 
 | Service | Port | Owns | Responsibility |
 |---|---|---|---|
@@ -32,7 +32,7 @@ they can also run together as a single application.
 - **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event; owners can query per-link and per-account click stats
 - **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
 - **API Documentation**: each service serves its own interactive Swagger UI
-- **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml` — runnable standalone or, via the root `docker-compose.yml`'s `include:`, all together
+- **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml`, and is started standalone — `cd services/<name> && docker compose up --build`
 
 ## 🛠️ Technology Stack
 
@@ -51,41 +51,23 @@ they can also run together as a single application.
 
 ## 🔧 Setup Instructions
 
-There's no root-level `.env` — each service under `services/` owns its
-complete config in its own `.env`/`.env.example` (secrets included). There's
-also no root-level Dockerfile: **each service has its own `Dockerfile` and its
-own `docker-compose.yml`**, and it builds and runs on its own — start any one
-service, in isolation, with nothing else running:
+There's no root-level `.env` and no root-level `docker-compose.yml` — each
+service under `services/` is entirely self-contained: its own `Dockerfile`,
+its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
+included). Every service is started on its own, in its own terminal.
 
-```bash
-cd services/auth-service   # or url-service / analytics-service
-docker compose up --build
-```
-
-That standalone file also starts that service's own Postgres (and Redis, for
-url-service), so it's fully self-contained. url-service works standalone too
-— it just can't reach analytics-service to report clicks, and logs a warning
-each time instead of failing the redirect (see `clients/analytics_client.py`).
-
-The **root** `docker-compose.yml` doesn't duplicate any of that — it just
-`include:`s all three service-level files into one project, so `docker
-compose up` from the repo root starts everything together on one shared
-network (letting url-service resolve `analytics-service` by name, etc.) and
-they act as one application:
-
-```bash
-docker-compose up --build
-```
-
-Either way, `docker-compose.yml` (root or per-service) reads each service's
-config straight from its `env_file:` and overrides only the handful of values
-that must differ between "running locally" and "running in the docker
-network" — `POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
+`docker-compose.yml` (per service) reads that service's config straight from
+its `env_file:` and overrides only the handful of values that must differ
+between "running locally" and "running in the docker network" —
+`POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
 `REDIS_URL`/`ANALYTICS_SERVICE_URL`.
 
-> Standalone and root-level runs use separate Docker volumes/networks (Compose
-> namespaces them by project, inferred from the directory you run `docker
-> compose` from) and the same host ports, so don't run both at once — pick one.
+> All three services default to the same host ports for their app (`8001`/
+> `8002`/`8003`) whether started via Docker or `manage.py runserver`, and
+> whether run via their own `docker-compose.yml` or locally — so don't run the
+> same service both ways at once, but the three *different* services (auth,
+> url, analytics) are meant to all be running at the same time, each on its
+> own port, for the platform to actually work end to end.
 
 ### Option 1: Run with Docker (Recommended)
 
@@ -101,11 +83,17 @@ network" — `POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
    files already ship with matching placeholder values — change them together
    if you change them at all.
 
-2. **Build and start every service, from the repo root**
+2. **Build and start each service, in its own terminal**
    ```bash
-   docker-compose up --build
+   cd services/auth-service && docker compose up --build
+   cd services/url-service && docker compose up --build
+   cd services/analytics-service && docker compose up --build
    ```
-   (Or start just one service standalone — see above.)
+   Each command also starts that service's own Postgres (and Redis, for
+   url-service), so each is fully self-contained. url-service still works
+   fine if analytics-service isn't running yet — it just can't reach it to
+   report clicks, and logs a warning each time instead of failing the
+   redirect (see `clients/analytics_client.py`).
 
 3. **Access each service**
    - auth-service: http://localhost:8001/docs/
@@ -121,7 +109,8 @@ running it in Docker and running it locally, since the values that differ
 (`POSTGRES_HOST`, `POSTGRES_PORT`, etc.) are only overridden by
 `docker-compose.yml`, never baked into the `.env` file itself.
 
-1. **Create a virtual environment per service** (or one shared venv — dependencies mostly overlap)
+1. **Create a virtual environment per service** (dependencies differ slightly
+   per service, so don't share one venv across them)
    ```bash
    cd services/auth-service   # or url-service / analytics-service
    python -m venv venv
@@ -141,12 +130,14 @@ running it in Docker and running it locally, since the values that differ
    `5436`, `analytics-db` on `5435`, Redis on `6380` — matching the
    `POSTGRES_PORT`/`REDIS_URL` already set in that service's `.env`.
 
-3. **Run migrations and start the server**
+3. **Run migrations and start the server on its own port**
    ```bash
    python manage.py migrate
    python manage.py createsuperuser   # optional, for that service's admin
-   python manage.py runserver 8001    # match the service's usual port
+   python manage.py runserver 8001    # auth-service: 8001, url-service: 8002, analytics-service: 8003
    ```
+   `runserver` defaults to port `8000` if you omit the port argument — always
+   pass it explicitly, or all three services will try to bind the same port.
 
 ## 🔑 Authenticating Requests
 
@@ -283,9 +274,12 @@ Enterprise-Grade_URL_Shortener/
 │       ├── Dockerfile
 │       ├── docker-compose.yml      # analytics-db + analytics-service — runs standalone
 │       └── requirements.txt, manage.py, .env.example
-├── docker-compose.yml              # include:s all 3 services/*/docker-compose.yml as one project
 └── README.md
 ```
+
+There's deliberately no root-level `Dockerfile`, `docker-compose.yml`, or `.env`
+— nothing at this level ties the services together; each is entirely
+self-contained under its own `services/<name>/` directory.
 
 ## 🎯 API Endpoints
 
@@ -306,11 +300,11 @@ Enterprise-Grade_URL_Shortener/
 ## 🐛 Troubleshooting
 
 ### Port Already in Use
-Each service's host port is set in `docker-compose.yml` (`8001`/`8002`/`8003` for
-the apps, `5434`/`5436`/`5435` for their databases, `6380` for Redis) — change
-the left side of the `ports:` mapping for the service that conflicts. Only the
-host-side number matters for this; services always talk to each other over
-the internal Docker network on the container's standard port regardless of
+Each service's host port is set in its own `docker-compose.yml` (`8001`/`8002`/
+`8003` for the apps, `5434`/`5436`/`5435` for their databases, `6380` for
+Redis) — change the left side of the `ports:` mapping for the service that
+conflicts. Only the host-side number matters for this; services always talk
+to each other over the internal Docker network on the container's standard port regardless of
 how it's exposed to the host.
 
 ### 401s between services / tokens not verifying
