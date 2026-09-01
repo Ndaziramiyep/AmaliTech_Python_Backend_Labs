@@ -1,8 +1,10 @@
 # Enterprise-Grade URL Shortener — Microservices
 
 A URL shortener platform split into three independently deployable Django REST
-Framework services, each with its own database, its own Docker image, and a
-single `docker-compose.yml` wiring them together.
+Framework services. Each has its own database, its own Docker image, and its
+own `docker-compose.yml` — so each one builds and runs entirely on its own —
+while the root `docker-compose.yml` `include:`s all three into one project so
+they can also run together as a single application.
 
 | Service | Port | Owns | Responsibility |
 |---|---|---|---|
@@ -30,7 +32,7 @@ single `docker-compose.yml` wiring them together.
 - **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event; owners can query per-link and per-account click stats
 - **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
 - **API Documentation**: each service serves its own interactive Swagger UI
-- **Docker Support**: every service has its own Dockerfile/image, orchestrated by one root `docker-compose.yml`
+- **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml` — runnable standalone or, via the root `docker-compose.yml`'s `include:`, all together
 
 ## 🛠️ Technology Stack
 
@@ -49,17 +51,61 @@ single `docker-compose.yml` wiring them together.
 
 ## 🔧 Setup Instructions
 
+There's no root-level `.env` — each service under `services/` owns its
+complete config in its own `.env`/`.env.example` (secrets included). There's
+also no root-level Dockerfile: **each service has its own `Dockerfile` and its
+own `docker-compose.yml`**, and it builds and runs on its own — start any one
+service, in isolation, with nothing else running:
+
+```bash
+cd services/auth-service   # or url-service / analytics-service
+docker compose up --build
+```
+
+That standalone file also starts that service's own Postgres (and Redis, for
+url-service), so it's fully self-contained. url-service works standalone too
+— it just can't reach analytics-service to report clicks, and logs a warning
+each time instead of failing the redirect (see `clients/analytics_client.py`).
+
+The **root** `docker-compose.yml` doesn't duplicate any of that — it just
+`include:`s all three service-level files into one project, so `docker
+compose up` from the repo root starts everything together on one shared
+network (letting url-service resolve `analytics-service` by name, etc.) and
+they act as one application:
+
+```bash
+docker-compose up --build
+```
+
+Either way, `docker-compose.yml` (root or per-service) reads each service's
+config straight from its `env_file:` and overrides only the handful of values
+that must differ between "running locally" and "running in the docker
+network" — `POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
+`REDIS_URL`/`ANALYTICS_SERVICE_URL`.
+
+> Standalone and root-level runs use separate Docker volumes/networks (Compose
+> namespaces them by project, inferred from the directory you run `docker
+> compose` from) and the same host ports, so don't run both at once — pick one.
+
 ### Option 1: Run with Docker (Recommended)
 
-1. **Copy the root environment file** (used by docker-compose to configure all three services)
+1. **Copy each service's env file** (only needed once — real `.env` files are
+   gitignored, so if they're already present you can skip this)
    ```bash
-   cp .env.example .env
+   cp services/auth-service/.env.example services/auth-service/.env
+   cp services/url-service/.env.example services/url-service/.env
+   cp services/analytics-service/.env.example services/analytics-service/.env
    ```
+   `JWT_SECRET_KEY` must be identical across all three; `INTERNAL_API_KEY` must
+   be identical between url-service and analytics-service. The `.env.example`
+   files already ship with matching placeholder values — change them together
+   if you change them at all.
 
-2. **Build and start every service**
+2. **Build and start every service, from the repo root**
    ```bash
    docker-compose up --build
    ```
+   (Or start just one service standalone — see above.)
 
 3. **Access each service**
    - auth-service: http://localhost:8001/docs/
@@ -69,7 +115,11 @@ single `docker-compose.yml` wiring them together.
 
 ### Option 2: Run a Service Locally (Without Docker)
 
-Each service under `services/` is a self-contained Django project.
+Each service under `services/` is a self-contained Django project, using the
+same `.env` file from Option 1 above — no changes needed to switch between
+running it in Docker and running it locally, since the values that differ
+(`POSTGRES_HOST`, `POSTGRES_PORT`, etc.) are only overridden by
+`docker-compose.yml`, never baked into the `.env` file itself.
 
 1. **Create a virtual environment per service** (or one shared venv — dependencies mostly overlap)
    ```bash
@@ -79,25 +129,19 @@ Each service under `services/` is a self-contained Django project.
    pip install -r requirements.txt
    ```
 
-2. **Copy that service's env file and fill in your values**
+2. **Start that service's own database** (and Redis, for url-service) — using
+   that service's own `docker-compose.yml` is easiest, since it starts just
+   the infra without also starting the Django app in a container:
    ```bash
-   cp .env.example .env
-   ```
-   Note `JWT_SECRET_KEY` (and `INTERNAL_API_KEY` for url-service/analytics-service)
-   must be **identical** across the services you run together.
-
-3. **Start that service's own database** (and Redis, for url-service) via the
-   root `docker-compose.yml`, e.g.:
-   ```bash
-   docker-compose up -d auth-db      # for auth-service
-   docker-compose up -d url-db redis # for url-service
-   docker-compose up -d analytics-db # for analytics-service
+   docker compose up -d auth-db                # from services/auth-service/
+   docker compose up -d url-db redis            # from services/url-service/
+   docker compose up -d analytics-db            # from services/analytics-service/
    ```
    Each db container is exposed on the host — `auth-db` on `5434`, `url-db` on
-   `5436`, `analytics-db` on `5435`, Redis on `6380` — so set `POSTGRES_PORT`
-   (and `REDIS_URL`) accordingly in that service's `.env`.
+   `5436`, `analytics-db` on `5435`, Redis on `6380` — matching the
+   `POSTGRES_PORT`/`REDIS_URL` already set in that service's `.env`.
 
-4. **Run migrations and start the server**
+3. **Run migrations and start the server**
    ```bash
    python manage.py migrate
    python manage.py createsuperuser   # optional, for that service's admin
@@ -215,7 +259,9 @@ Enterprise-Grade_URL_Shortener/
 │   ├── auth-service/
 │   │   ├── Config/                # settings, urls, wsgi, asgi
 │   │   ├── accounts/api/          # register/login/refresh views, serializers, urls
-│   │   ├── Dockerfile, requirements.txt, manage.py, .env.example
+│   │   ├── Dockerfile              # this service's image
+│   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
+│   │   ├── requirements.txt, manage.py, .env.example
 │   │   └── ...
 │   ├── url-service/
 │   │   ├── Config/
@@ -225,16 +271,19 @@ Enterprise-Grade_URL_Shortener/
 │   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting
 │   │   │   ├── domain/, services/ # short-code gen, repository, Redis cache, orchestration
 │   │   │   └── api/               # views, serializers, urls
-│   │   └── Dockerfile, requirements.txt, manage.py, .env.example
+│   │   ├── Dockerfile
+│   │   ├── docker-compose.yml      # url-db + redis + url-service — runs standalone
+│   │   └── requirements.txt, manage.py, .env.example
 │   └── analytics-service/
 │       ├── Config/
 │       ├── analytics/
 │       │   ├── models.py          # ClickEvent
 │       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
 │       │   └── api/                # click-record + stats views, permissions.IsInternalService
-│       └── Dockerfile, requirements.txt, manage.py, .env.example
-├── docker-compose.yml              # auth-db, url-db, analytics-db, redis + all 3 services
-├── .env / .env.example             # root env for docker-compose (namespaced per service)
+│       ├── Dockerfile
+│       ├── docker-compose.yml      # analytics-db + analytics-service — runs standalone
+│       └── requirements.txt, manage.py, .env.example
+├── docker-compose.yml              # include:s all 3 services/*/docker-compose.yml as one project
 └── README.md
 ```
 
@@ -301,9 +350,9 @@ python manage.py migrate
 
 For production deployment:
 
-1. Update the root `.env` (and each service's `.env` if running outside Docker) with production values:
+1. Update each service's own `.env` with production values:
    - Set `DEBUG=False`
-   - Generate strong, random values for `JWT_SECRET_KEY`, `INTERNAL_API_KEY`, and each service's own `*_SECRET_KEY` — and keep the shared ones identical across services
+   - Generate strong, random values for `JWT_SECRET_KEY` and `SECRET_KEY` in every service, and `INTERNAL_API_KEY` in url-service/analytics-service — keep the shared ones (`JWT_SECRET_KEY` everywhere, `INTERNAL_API_KEY` on url-service + analytics-service) identical across the services that share them
    - Configure `ALLOWED_HOSTS` per environment
    - Set `CORS_ALLOW_ALL_ORIGINS=False` and list real origins in `CORS_ALLOWED_ORIGINS`
 
