@@ -7,20 +7,16 @@
 ![License](https://img.shields.io/badge/License-Educational-lightgrey)
 
 A URL shortener platform split into three independently deployable Django REST
-Framework services. Each has its own database and its own Docker image; all
-three, plus a single shared Postgres instance and Redis, are brought up
-together by one root-level `docker-compose.yml`.
+Framework services. Each has its own database, its own Docker image, and its
+own `docker-compose.yml` — every service builds, runs, and is started
+entirely on its own; there is no root-level orchestration file tying them
+together, by design.
 
-| Service               | Port   | Owns                       | Responsibility                                           |
-|-----------------------|--------|----------------------------|----------------------------------------------------------|
-| **auth-service**      | `8001` | `auth_service` db (Users)  | Register, log in, issue/refresh JWTs                     |
-| **url-service**       | `8002` | `url_service` db + Redis   | Create short URLs, resolve/redirect, report click events |
-| **analytics-service** | `8003` | `analytics_service` db     | Record click events, serve click stats                   |
-
-All three databases live in one shared Postgres container (`localhost:5432`,
-user `postgres` / password `patrick`) — each service still only ever touches
-its own database, it's just one Postgres instance hosting all three instead
-of one container per service.
+| Service               | Port   | Owns              | Responsibility                                           |
+|-----------------------|--------|-------------------|----------------------------------------------------------|
+| **auth-service**      | `8001` | `auth_db` (Users) | Register, log in, issue/refresh JWTs                     |
+| **url-service**       | `8002` | `url_db` + Redis  | Create short URLs, resolve/redirect, report click events |
+| **analytics-service** | `8003` | `analytics_db`    | Record click events, serve click stats                   |
 
 ```
 ┌──────────────┐      register/login       ┌──────────────┐
@@ -60,15 +56,15 @@ of one container per service.
 - **Rate Limiting**: register/login are throttled per-IP against brute-force; url-service's write endpoints are throttled per-user at a rate that scales with tier (Free: 100/day, Premium/Admin: 1000/day)
 - **URL Shortening & Redirect** (url-service): short codes (or a Premium custom alias) backed by PostgreSQL, cached in Redis for fast lookups; supports tags, expiry, activation toggling, and per-link metadata
 - **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event; owners can query per-link and per-account click stats
-- **Database-per-service**: each service has its own Postgres database (all three hosted in one shared container) — no service can query another's tables
+- **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
 - **API Documentation**: each service serves its own interactive Swagger UI
-- **Docker Support**: every service has its own Dockerfile/image; a single root-level `docker-compose.yml` builds and starts all three together, alongside the shared Postgres and Redis — `docker compose up --build`
+- **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml`, and is started standalone — `cd services/<name> && docker compose up --build`
 
 ## 🛠️ Technology Stack
 
 - **Framework**: Django 5.0 + Django REST Framework, in all three services
 - **Authentication**: JWT via `djangorestframework-simplejwt` (issued by auth-service, verified statelessly elsewhere)
-- **Database**: PostgreSQL — one shared container, a separate database per service
+- **Database**: PostgreSQL — a separate container per service
 - **Cache**: Redis (`django-redis`), used by url-service only
 - **API Documentation**: drf-spectacular (OpenAPI/Swagger) per service
 - **Server**: Gunicorn (production)
@@ -81,58 +77,49 @@ of one container per service.
 
 ## 🔧 Setup Instructions
 
-Each service under `services/` still keeps its own `Dockerfile` and its own
-`.env`/`.env.example` (secrets included). Orchestration lives one level up: a
-single root-level `docker-compose.yml` builds and starts all three services
-together, plus one shared Postgres container (all three databases side by
-side) and Redis — the shared Postgres container's own credentials come from a
-root-level `.env` (see below), never hardcoded in `docker-compose.yml`.
+There's no root-level `.env` and no root-level `docker-compose.yml` — each
+service under `services/` is entirely self-contained: its own `Dockerfile`,
+its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
+included). Every service is started on its own, in its own terminal.
 
-The root `docker-compose.yml` reads each service's config straight from its
-`env_file:` and overrides only the handful of values that must differ between
-"running locally" and "running in the docker network" —
+`docker-compose.yml` (per service) reads that service's config straight from
+its `env_file:` and overrides only the handful of values that must differ
+between "running locally" and "running in the docker network" —
 `POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
 `REDIS_URL`/`ANALYTICS_SERVICE_URL`.
 
 > Each service's app defaults to its own host port (`8001`/`8002`/`8003`)
-> whether started via Docker or `manage.py runserver` — so don't run the same
-> service both ways at once, but the three *different* services (auth, url,
-> analytics) are meant to all be running at the same time, each on its own
-> port, for the platform to actually work end to end.
+> whether started via Docker or `manage.py runserver`, and whether run via
+> their own `docker-compose.yml` or locally — so don't run the same service
+> both ways at once, but the three *different* services (auth, url, analytics)
+> are meant to all be running at the same time, each on its own port, for the
+> platform to actually work end to end.
 
 ### Option 1: Run with Docker (Recommended)
 
-1. **Copy the root env file and each service's env file** (only needed once —
-   real `.env` files are gitignored, so if they're already present you can
-   skip this)
+1. **Copy each service's env file** (only needed once — real `.env` files are
+   gitignored, so if they're already present you can skip this)
    ```bash
-   cp .env.example .env
    cp services/auth-service/.env.example services/auth-service/.env
    cp services/url-service/.env.example services/url-service/.env
    cp services/analytics-service/.env.example services/analytics-service/.env
    ```
-   The root `.env` holds the shared Postgres container's own credentials
-   (`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`) — that's what
-   `docker-compose.yml` reads via `env_file:`, nothing is hardcoded there.
-   `JWT_SECRET_KEY` must be identical across all three service `.env` files;
-   `INTERNAL_API_KEY` must be identical between url-service and
-   analytics-service. The `.env.example` files already ship with matching
-   placeholder values — change them together if you change them at all.
-   `POSTGRES_HOST`/`POSTGRES_PORT` in each service's file (`localhost:5432`)
-   match the shared Postgres container, so they don't need to be touched
-   either.
+   `JWT_SECRET_KEY` must be identical across all three; `INTERNAL_API_KEY` must
+   be identical between url-service and analytics-service. The `.env.example`
+   files already ship with matching placeholder values — change them together
+   if you change them at all.
 
-2. **Build and start everything, from the repo root**
+2. **Build and start each service, in its own terminal**
    ```bash
-   docker compose up --build
+   cd services/auth-service && docker compose up --build
+   cd services/url-service && docker compose up --build
+   cd services/analytics-service && docker compose up --build
    ```
-   This starts the shared Postgres container (creating `auth_service`,
-   `url_service`, and `analytics_service` databases inside it on first boot —
-   see `db/init-databases.sh`), Redis, and all three Django services. Postgres
-   is reachable on the host at `localhost:5432` (user `postgres`, password
-   `patrick`, maintenance database `postgres`) — the same credentials you'd
-   use to register a server connection in pgAdmin. Data persists in the
-   `shared_postgres_data` Docker volume across restarts.
+   Each command also starts that service's own Postgres (and Redis, for
+   url-service), so each is fully self-contained. url-service still works
+   fine if analytics-service isn't running yet — it just can't reach it to
+   report clicks, and logs a warning each time instead of failing the
+   redirect (see `clients/analytics_client.py`).
 
 3. **Access each service**
    - auth-service: http://localhost:8001/docs/
@@ -145,7 +132,7 @@ The root `docker-compose.yml` reads each service's config straight from its
 Each service under `services/` is a self-contained Django project, using the
 same `.env` file from Option 1 above — no changes needed to switch between
 running it in Docker and running it locally, since the values that differ
-(`POSTGRES_HOST`, `POSTGRES_PORT`, etc.) are only overridden by the root
+(`POSTGRES_HOST`, `POSTGRES_PORT`, etc.) are only overridden by
 `docker-compose.yml`, never baked into the `.env` file itself.
 
 1. **Create a virtual environment per service** (dependencies differ slightly
@@ -157,13 +144,17 @@ running it in Docker and running it locally, since the values that differ
    pip install -r requirements.txt
    ```
 
-2. **Start the shared infra** (Postgres + Redis) — from the repo root, this
-   starts just the infra without also starting the Django apps in containers:
+2. **Start that service's own database** (and Redis, for url-service) — using
+   that service's own `docker-compose.yml` is easiest, since it starts just
+   the infra without also starting the Django app in a container:
    ```bash
-   docker compose up -d postgres redis
+   docker compose up -d auth-db                # from services/auth-service/
+   docker compose up -d url-db redis            # from services/url-service/
+   docker compose up -d analytics-db            # from services/analytics-service/
    ```
-   Postgres is exposed on the host at `5432`, Redis at `6380` — matching
-   `POSTGRES_PORT`/`REDIS_URL` already set in each service's `.env`.
+   Each db container is exposed on the host — `auth-db` on `5434`, `url-db` on
+   `5436`, `analytics-db` on `5435`, Redis on `6380` — matching the
+   `POSTGRES_PORT`/`REDIS_URL` already set in that service's `.env`.
 
 3. **Run migrations and start the server on its own port**
    ```bash
@@ -476,10 +467,6 @@ Plus everything `AbstractUser` already provides (`username`, `password`,
 
 ```
 Enterprise-Grade_URL_Shortener/
-├── db/
-│   └── init-databases.sh          # creates auth_service/url_service/analytics_service dbs on first boot
-├── docker-compose.yml             # shared postgres + redis + all three services — the one orchestration file
-├── .env.example                    # shared postgres container's own credentials (POSTGRES_USER/PASSWORD/DB)
 ├── services/
 │   ├── auth-service/
 │   │   ├── Config/                # settings (AUTH_USER_MODEL), urls, wsgi, asgi
@@ -488,6 +475,7 @@ Enterprise-Grade_URL_Shortener/
 │   │   │   ├── admin.py           # UserAdmin exposing tier/is_premium
 │   │   │   └── api/               # register/login/refresh views (is_staff/tier JWT claims), serializers, urls
 │   │   ├── Dockerfile              # this service's image
+│   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
 │   │   ├── requirements.txt, manage.py, .env.example
 │   │   └── ...
 │   ├── url-service/
@@ -498,6 +486,7 @@ Enterprise-Grade_URL_Shortener/
 │   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting + ip-api.com geolocation + cascade-delete
 │   │   │   └── api/               # views (short-code/alias gen, Redis cache, redirect+click_count, background threading), serializers, permissions (IsOwnerOrReadOnly), throttling (TieredUserRateThrottle), pagination (UrlPagination), urls
 │   │   ├── Dockerfile
+│   │   ├── docker-compose.yml      # url-db + redis + url-service — runs standalone
 │   │   └── requirements.txt, manage.py, .env.example
 │   └── analytics-service/
 │       ├── Config/
@@ -506,14 +495,14 @@ Enterprise-Grade_URL_Shortener/
 │       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
 │       │   └── api/                # click-record/cascade-delete + stats + detailed-analytics views, permissions (IsInternalService, IsPremiumOrAdmin)
 │       ├── Dockerfile
+│       ├── docker-compose.yml      # analytics-db + analytics-service — runs standalone
 │       └── requirements.txt, manage.py, .env.example
 └── README.md
 ```
 
-Each service still keeps its own `Dockerfile` and `.env`/`.env.example`
-(secrets included), but orchestration lives in the single root-level
-`docker-compose.yml` — that's what ties the services, the shared Postgres
-container, and Redis together.
+There's deliberately no root-level `Dockerfile`, `docker-compose.yml`, or `.env`
+— nothing at this level ties the services together; each is entirely
+self-contained under its own `services/<name>/` directory.
 
 ## 🎯 API Endpoints
 
@@ -540,11 +529,11 @@ container, and Redis together.
 ## 🐛 Troubleshooting
 
 ### Port Already in Use
-Every host port is set in the root `docker-compose.yml` (`8001`/`8002`/`8003`
-for the apps, `5432` for the shared Postgres, `6380` for Redis) — change the
-left side of the `ports:` mapping for the service that conflicts. Only the
-host-side number matters for this; services always talk to each other over
-the internal Docker network on the container's standard port regardless of
+Each service's host port is set in its own `docker-compose.yml` (`8001`/`8002`/
+`8003` for the apps, `5434`/`5436`/`5435` for their databases, `6380` for
+Redis) — change the left side of the `ports:` mapping for the service that
+conflicts. Only the host-side number matters for this; services always talk
+to each other over the internal Docker network on the container's standard port regardless of
 how it's exposed to the host.
 
 ### 401s between services / tokens not verifying
