@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -44,6 +45,12 @@ class UrlCreateSerializer(serializers.Serializer):
             existing = existing.exclude(pk=instance.pk)
         if existing.exists():
             raise serializers.ValidationError("This alias is already taken.")
+        return value
+
+    def validate_expires_at(self, value):
+        """Rejects an expiry timestamp that's already in the past — the link would be dead on arrival."""
+        if value is not None and value <= timezone.now():
+            raise serializers.ValidationError("expires_at must be in the future.")
         return value
 
 
