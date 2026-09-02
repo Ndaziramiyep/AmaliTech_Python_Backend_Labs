@@ -24,7 +24,7 @@ services:
       POSTGRES_HOST: analytics-db
       POSTGRES_PORT: "5432"
     ports:
-      - "8003:8000"
+      - "8009:8000"
     depends_on:
       analytics-db:
         condition: service_healthy

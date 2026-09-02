@@ -28,7 +28,7 @@ services:
       POSTGRES_HOST: auth-db
       POSTGRES_PORT: "5432"
     ports:
-      - "8001:8000"
+      - "8007:8000"
     depends_on:
       auth-db:
         condition: service_healthy

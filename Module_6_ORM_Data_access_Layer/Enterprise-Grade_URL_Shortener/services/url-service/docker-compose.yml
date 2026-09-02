@@ -38,8 +38,9 @@ services:
       # click reporting just fails its request and logs a warning — see
       # url_shortener/clients/analytics_client.py. Redirects still work.
       ANALYTICS_SERVICE_URL: http://analytics-service:8000
+      BASE_URL: http://localhost:8008
     ports:
-      - "8002:8000"
+      - "8008:8000"
     depends_on:
       url-db:
         condition: service_healthy

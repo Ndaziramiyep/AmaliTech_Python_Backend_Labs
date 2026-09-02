@@ -124,7 +124,7 @@ SIMPLE_JWT = {
 # events to analytics-service, so that endpoint can reject public traffic.
 INTERNAL_API_KEY = env("INTERNAL_API_KEY", default="change-me-shared-internal-key")
 
-ANALYTICS_SERVICE_URL = env("ANALYTICS_SERVICE_URL", default="http://localhost:8003")
+ANALYTICS_SERVICE_URL = env("ANALYTICS_SERVICE_URL", default="http://localhost:8009")
 
 # drf-spectacular Configuration
 SPECTACULAR_SETTINGS = {
@@ -145,7 +145,7 @@ CACHES = {
     }
 }
 
-BASE_URL = env("BASE_URL", default="http://localhost:8002")
+BASE_URL = env("BASE_URL", default="http://localhost:8008")
 
 # Seconds a short_code -> url data lookup is kept in the cache
 URL_CACHE_TIMEOUT_SECONDS = env.int("URL_CACHE_TIMEOUT_SECONDS", default=3600)
