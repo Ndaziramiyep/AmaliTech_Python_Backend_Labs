@@ -3,36 +3,17 @@ from unittest.mock import patch
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
-from rest_framework_simplejwt.tokens import AccessToken
 
 from url_shortener.models import Url
 
 
-def make_access_token(user_id, email):
-    """Mint a token the same way auth-service would, signed with this
-    service's configured SIGNING_KEY — simulating a real cross-service token."""
-    token = AccessToken()
-    token['user_id'] = user_id
-    token['email'] = email
-    return str(token)
-
-
 class CreateShortUrlAPITest(APITestCase):
-    def setUp(self):
-        self.access_token = make_access_token(user_id=1, email="alice@example.com")
-
-    def authenticate(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.access_token}")
-
-    def test_create_requires_authentication(self):
-        data = {'original_url': 'https://www.example.com'}
-        response = self.client.post(reverse('create-short-url'), data, format='json')
-
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
     def test_create_success(self):
-        self.authenticate()
-        data = {'original_url': 'https://www.example.com'}
+        data = {
+            'original_url': 'https://www.example.com',
+            'owner_id': 1,
+            'owner_email': 'alice@example.com',
+        }
         response = self.client.post(reverse('create-short-url'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -40,9 +21,18 @@ class CreateShortUrlAPITest(APITestCase):
         self.assertIn('short_link', response.data)
         self.assertEqual(response.data['owner'], 'alice@example.com')
 
+    def test_missing_owner(self):
+        data = {'original_url': 'https://www.example.com'}
+        response = self.client.post(reverse('create-short-url'), data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_invalid_url(self):
-        self.authenticate()
-        data = {'original_url': 'not-a-valid-url'}
+        data = {
+            'original_url': 'not-a-valid-url',
+            'owner_id': 1,
+            'owner_email': 'alice@example.com',
+        }
         response = self.client.post(reverse('create-short-url'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

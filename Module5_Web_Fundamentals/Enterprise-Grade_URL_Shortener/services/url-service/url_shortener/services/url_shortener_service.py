@@ -23,9 +23,9 @@ class UrlShortenerService:
         self._cache = cache_backend or RedisUrlCache()
         self._cache_timeout = settings.URL_CACHE_TIMEOUT_SECONDS
 
-    def create_short_url(self, original_url: str, owner) -> Url:
+    def create_short_url(self, original_url: str, owner_id: int, owner_email: str) -> Url:
         short_code = self._generate_unique_code()
-        url_obj = self._repository.create(original_url, short_code, owner)
+        url_obj = self._repository.create(original_url, short_code, owner_id, owner_email)
         self._cache.set(short_code, self._serialize(url_obj), timeout=self._cache_timeout)
         return url_obj
 

@@ -8,7 +8,7 @@ together, by design.
 
 | Service | Port | Owns | Responsibility |
 |---|---|---|---|
-| **auth-service** | `8004` | `auth_db` (Users) | Register, log in, issue/refresh JWTs |
+| **auth-service** | `8004` | `auth_db` (Users) | Register, log in |
 | **url-service** | `8005` | `url_db` + Redis | Create short URLs, resolve/redirect, report click events |
 | **analytics-service** | `8006` | `analytics_db` | Record click events, serve click stats |
 
@@ -16,20 +16,20 @@ together, by design.
 ┌──────────────┐      register/login       ┌──────────────┐
 │   client     │ ─────────────────────────▶│ auth-service │
 │ (browser/    │                            │   :8004      │
-│  curl/etc.)  │◀──────── JWT ──────────────┘──────────────┘
+│  curl/etc.)  │◀──────── user id ──────────┘──────────────┘
 │              │
-│              │  Bearer JWT               ┌──────────────┐      click event      ┌───────────────────┐
+│              │  create / redirect        ┌──────────────┐      click event      ┌───────────────────┐
 │              │ ─────────────────────────▶│ url-service  │ ────────────────────▶│ analytics-service  │
-└──────────────┘   create / redirect       │   :8005      │  (X-Internal-Key)     │      :8006         │
-                                            └──────────────┘                       └───────────────────┘
+└──────────────┘   (owner_id/owner_email   │   :8005      │  (X-Internal-Key)     │      :8006         │
+                    sent in the request)    └──────────────┘                       └───────────────────┘
 ```
 
 ## 🚀 Features
 
-- **JWT Authentication** (auth-service): register/login with email + password; access & refresh tokens carry a custom `email` claim
-- **Stateless cross-service auth**: url-service and analytics-service verify JWTs using a secret shared with auth-service — no network call back to auth-service, no local Users table, no coupling
-- **URL Shortening & Redirect** (url-service): short codes backed by PostgreSQL, cached in Redis for fast lookups
-- **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event; owners can query per-link and per-account click stats
+- **Plain REST APIs, no authentication**: every endpoint is open (`AllowAny`) — no JWTs, no Bearer tokens, no roles/permissions to manage
+- **Register/login** (auth-service): email + password, returns the user's plain `id`/`email` — the caller carries that forward on later requests
+- **URL Shortening & Redirect** (url-service): short codes backed by PostgreSQL, cached in Redis for fast lookups; the caller supplies `owner_id`/`owner_email` directly in the request body
+- **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event; stats endpoints are scoped by an `owner_id` query parameter the caller supplies
 - **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
 - **API Documentation**: each service serves its own interactive Swagger UI
 - **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml`, and is started standalone — `cd services/<name> && docker compose up --build`
@@ -37,7 +37,6 @@ together, by design.
 ## 🛠️ Technology Stack
 
 - **Framework**: Django 5.0 + Django REST Framework, in all three services
-- **Authentication**: JWT via `djangorestframework-simplejwt` (issued by auth-service, verified statelessly elsewhere)
 - **Database**: PostgreSQL — a separate container per service
 - **Cache**: Redis (`django-redis`), used by url-service only
 - **API Documentation**: drf-spectacular (OpenAPI/Swagger) per service
@@ -53,8 +52,8 @@ together, by design.
 
 There's no root-level `.env` and no root-level `docker-compose.yml` — each
 service under `services/` is entirely self-contained: its own `Dockerfile`,
-its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
-included). Every service is started on its own, in its own terminal.
+its own `docker-compose.yml`, and its own `.env`/`.env.example`. Every
+service is started on its own, in its own terminal.
 
 `docker-compose.yml` (per service) reads that service's config straight from
 its `env_file:` and overrides only the handful of values that must differ
@@ -78,10 +77,9 @@ between "running locally" and "running in the docker network" —
    cp services/url-service/.env.example services/url-service/.env
    cp services/analytics-service/.env.example services/analytics-service/.env
    ```
-   `JWT_SECRET_KEY` must be identical across all three; `INTERNAL_API_KEY` must
-   be identical between url-service and analytics-service. The `.env.example`
-   files already ship with matching placeholder values — change them together
-   if you change them at all.
+   `INTERNAL_API_KEY` must be identical between url-service and
+   analytics-service. The `.env.example` files already ship with matching
+   placeholder values — change them together if you change them at all.
 
 2. **Build and start each service, in its own terminal**
    ```bash
@@ -139,37 +137,12 @@ running it in Docker and running it locally, since the values that differ
    `runserver` defaults to port `8000` if you omit the port argument — always
    pass it explicitly, or all three services will try to bind the same port.
 
-## 🔑 Authenticating Requests
-
-Every protected endpoint expects the access token as a **Bearer token** on the
-`Authorization` header — that's the one and only place it goes:
-
-```text
-Authorization: Bearer <your-access-token>
-```
-
-**In Swagger UI** (`:8004/docs/`, `:8005/docs/`, `:8006/docs/`):
-
-1. Register or log in via auth-service's `/api/auth/register/` or `/api/auth/login/` and copy the `access` value from the response.
-2. On whichever service's Swagger page you want to call, click the green **Authorize** button (top right), paste just the raw token — no `Bearer` prefix, Swagger adds that — and click **Authorize**.
-3. Every "Try it out" call on that page now sends it automatically.
-
-**Via curl / any HTTP client**, set the header directly:
-```bash
-curl -X POST http://localhost:8005/api/urls/ \
-  -H "Authorization: Bearer <your-access-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"original_url": "https://example.com"}'
-```
-
-The token is only ever issued by auth-service, but url-service and
-analytics-service both verify it themselves (see `authentication.py` in each)
-and both show the same Authorize button — this required manually registering
-a `drf_spectacular.extensions.OpenApiAuthenticationExtension` for
-`StatelessJWTAuthentication`, since drf-spectacular only auto-detects the
-stock `JWTAuthentication` class, not a subclass of it.
-
 ## 📚 API Usage
+
+None of these endpoints require authentication — there's no login state to
+carry between requests. Instead, the caller passes whichever id it already
+has (the `id` from register/login, as `owner_id`/`owner_email`) directly in
+the request body or query string of the calls that need it.
 
 ### auth-service (`:8004`)
 
@@ -181,7 +154,7 @@ stock `JWTAuthentication` class, not a subclass of it.
   "confirm_password": "StrongPassword123"
 }
 ```
-**Response** (201): `{ "id": 1, "email": "alice@example.com", "access": "...", "refresh": "..." }`
+**Response** (201): `{ "id": 1, "email": "alice@example.com" }`
 
 #### 2. Login — `POST /api/auth/login/`
 ```json
@@ -189,17 +162,15 @@ stock `JWTAuthentication` class, not a subclass of it.
 ```
 **Response** (200): same shape as register.
 
-#### 3. Refresh — `POST /api/auth/refresh/`
-```json
-{ "refresh": "<jwt-refresh-token>" }
-```
-**Response** (200): `{ "access": "<new-jwt-access-token>" }`
-
 ### url-service (`:8005`)
 
-#### 4. Create Short URL — `POST /api/urls/` (requires `Authorization: Bearer <access-token>`)
+#### 3. Create Short URL — `POST /api/urls/`
 ```json
-{ "original_url": "https://www.example.com" }
+{
+  "original_url": "https://www.example.com",
+  "owner_id": 1,
+  "owner_email": "alice@example.com"
+}
 ```
 **Response** (201):
 ```json
@@ -213,23 +184,23 @@ stock `JWTAuthentication` class, not a subclass of it.
 }
 ```
 
-#### 5. Look Up the Original URL (no redirect) — `GET /api/urls/{short_code}/`
+#### 4. Look Up the Original URL (no redirect) — `GET /api/urls/{short_code}/`
 **Response** (200): `{ "short_url": "abc123", "original_url": "https://www.example.com" }`
 
-#### 6. Redirect — `GET /{short_code}/`
+#### 5. Redirect — `GET /{short_code}/`
 Paste directly into a browser: http://localhost:8005/abc123/ → 302 to the original URL.
 Every successful redirect also reports a click event to analytics-service.
 
-### analytics-service (`:8006`, requires `Authorization: Bearer <access-token>`)
+### analytics-service (`:8006`)
 
-#### 7. Click Stats for One Short Code — `GET /api/analytics/urls/{short_code}/`
+#### 6. Click Stats for One Short Code — `GET /api/analytics/urls/{short_code}/?owner_id=1`
 **Response** (200): `{ "short_code": "abc123", "click_count": 4, "last_clicked_at": "2026-08-31T14:05:00Z" }`
-Only counts clicks recorded under your own user id.
+Only counts clicks recorded under the given `owner_id`.
 
-#### 8. Your Click Summary — `GET /api/analytics/summary/`
+#### 7. Click Summary for an Owner — `GET /api/analytics/summary/?owner_id=1`
 **Response** (200): `[ { "short_code": "abc123", "click_count": 4 }, { "short_code": "xyz789", "click_count": 1 } ]`
 
-#### 9. Record Click (internal) — `POST /api/events/click/`
+#### 8. Record Click (internal) — `POST /api/events/click/`
 Called by url-service on every redirect, not meant for direct/public use — requires
 the `X-Internal-Key` header to match `INTERNAL_API_KEY`.
 
@@ -249,7 +220,7 @@ Enterprise-Grade_URL_Shortener/
 ├── services/
 │   ├── auth-service/
 │   │   ├── Config/                # settings, urls, wsgi, asgi
-│   │   ├── accounts/api/          # register/login/refresh views, serializers, urls
+│   │   ├── accounts/api/          # register/login views, serializers, urls
 │   │   ├── Dockerfile              # this service's image
 │   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
 │   │   ├── requirements.txt, manage.py, .env.example
@@ -258,7 +229,6 @@ Enterprise-Grade_URL_Shortener/
 │   │   ├── Config/
 │   │   ├── url_shortener/
 │   │   │   ├── models.py          # Url (owner_id/owner_email — no cross-service FK)
-│   │   │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
 │   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting
 │   │   │   ├── domain/, services/ # short-code gen, repository, Redis cache, orchestration
 │   │   │   └── api/               # views, serializers, urls
@@ -269,7 +239,6 @@ Enterprise-Grade_URL_Shortener/
 │       ├── Config/
 │       ├── analytics/
 │       │   ├── models.py          # ClickEvent
-│       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
 │       │   └── api/                # click-record + stats views, permissions.IsInternalService
 │       ├── Dockerfile
 │       ├── docker-compose.yml      # analytics-db + analytics-service — runs standalone
@@ -285,14 +254,13 @@ self-contained under its own `services/<name>/` directory.
 
 | Service | Method | Endpoint | Auth | Description |
 |---|---|---|---|---|
-| auth | POST | `/api/auth/register/` | No | Register, returns JWT tokens |
-| auth | POST | `/api/auth/login/` | No | Log in, returns JWT tokens |
-| auth | POST | `/api/auth/refresh/` | No | Exchange refresh token for new access token |
-| url | POST | `/api/urls/` | Yes | Create a new short URL |
+| auth | POST | `/api/auth/register/` | No | Register, returns `{id, email}` |
+| auth | POST | `/api/auth/login/` | No | Log in, returns `{id, email}` |
+| url | POST | `/api/urls/` | No | Create a new short URL (owner_id/owner_email in body) |
 | url | GET | `/api/urls/{short_code}/` | No | Return the original URL as JSON (no redirect) |
 | url | GET | `/{short_code}/` | No | Redirect to the original URL; reports a click event |
-| analytics | GET | `/api/analytics/urls/{short_code}/` | Yes | Click count + last click time for a code you own |
-| analytics | GET | `/api/analytics/summary/` | Yes | Click counts across all short codes you own |
+| analytics | GET | `/api/analytics/urls/{short_code}/` | No | Click count + last click time (owner_id query param) |
+| analytics | GET | `/api/analytics/summary/` | No | Click counts across all short codes for owner_id |
 | analytics | POST | `/api/events/click/` | Internal key | Called by url-service only |
 | each | GET | `/api/schema/`, `/docs/` | No | OpenAPI schema / Swagger UI |
 | each | GET | `/admin/` | Session (that service's local admin) | Django admin |
@@ -306,10 +274,6 @@ Redis) — change the left side of the `ports:` mapping for the service that
 conflicts. Only the host-side number matters for this; services always talk
 to each other over the internal Docker network on the container's standard port regardless of
 how it's exposed to the host.
-
-### 401s between services / tokens not verifying
-`JWT_SECRET_KEY` must be **identical** across all three services' env. If you
-change it, restart every service (docker-compose reads env at container start).
 
 ### Click events not showing up in analytics-service
 url-service never blocks a redirect on analytics-service being reachable — it
@@ -328,15 +292,15 @@ python manage.py migrate
 ## 📝 Development Notes
 
 ### How It Works
-1. A user registers/logs in against **auth-service** and receives a JWT access + refresh token pair, with `user_id` and `email` claims.
-2. The user submits a long URL to **url-service** with `Authorization: Bearer <access-token>`. url-service verifies the token's signature itself (shared `JWT_SECRET_KEY`) and reads `user_id`/`email` straight from its claims — it never queries a Users table, because it doesn't have one.
+1. A user registers/logs in against **auth-service** and gets back their plain `id`/`email` — no token, no session to carry forward.
+2. The user submits a long URL to **url-service** along with `owner_id`/`owner_email` in the request body. url-service doesn't verify these against anything — it trusts the caller and just stores them.
 3. url-service generates a unique short code and persists `(owner_id, owner_email, original_url, short_code)` in its own `url_db`, and caches the short_code → URL/owner lookup in Redis.
 4. Visiting `/{short_code}/` on url-service resolves the URL (cache first, then `url_db`) and redirects (302). Before redirecting, it POSTs a click event to **analytics-service** (`short_code`, `owner_id`, referrer, user-agent, IP) — fire-and-forget, with a short timeout, never blocking the redirect.
-5. analytics-service verifies that call came from url-service via a shared `INTERNAL_API_KEY` header and persists it in its own `analytics_db`. Owners can later query aggregate click stats for their own short codes.
+5. analytics-service verifies that call came from url-service via a shared `INTERNAL_API_KEY` header and persists it in its own `analytics_db`. Click stats are later queried by passing `owner_id` as a query parameter — again, trusted as given, not verified.
 
 ### Key Design Decisions
 - **Database-per-service**: `auth_db`, `url_db`, `analytics_db` are separate Postgres containers — no service can reach into another's tables. `Url.owner_id` / `ClickEvent.owner_id` are plain denormalized ids, not foreign keys, since the referenced User row lives in a different service's database entirely.
-- **Stateless JWT verification**: url-service and analytics-service authenticate requests purely from the JWT's signature and claims (`url_shortener/authentication.py`, `analytics/authentication.py`) — no synchronous call back to auth-service on every request, and no duplicated Users table to keep in sync. Each service still keeps `django.contrib.auth` installed, but only for its own local admin-panel login, which is unrelated to this JWT-based API auth.
+- **No cross-service auth**: url-service and analytics-service accept `owner_id`/`owner_email` as plain request data instead of verifying an identity token — simpler, at the cost of trusting whatever the caller sends. Each service still keeps `django.contrib.auth` installed, but only for its own local admin-panel login, which is unrelated to the public API.
 - **Fire-and-forget click events**: a redirect must succeed even if analytics-service is down, slow, or unreachable; the POST uses a 1-second timeout and swallows failures (logged, not raised).
 - **RESTful Design**: proper HTTP methods and status codes, one Swagger UI per service.
 
@@ -346,7 +310,7 @@ For production deployment:
 
 1. Update each service's own `.env` with production values:
    - Set `DEBUG=False`
-   - Generate strong, random values for `JWT_SECRET_KEY` and `SECRET_KEY` in every service, and `INTERNAL_API_KEY` in url-service/analytics-service — keep the shared ones (`JWT_SECRET_KEY` everywhere, `INTERNAL_API_KEY` on url-service + analytics-service) identical across the services that share them
+   - Generate strong, random values for `SECRET_KEY` in every service, and `INTERNAL_API_KEY` in url-service/analytics-service — keep `INTERNAL_API_KEY` identical across the two services that share it
    - Configure `ALLOWED_HOSTS` per environment
    - Set `CORS_ALLOW_ALL_ORIGINS=False` and list real origins in `CORS_ALLOWED_ORIGINS`
 

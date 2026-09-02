@@ -4,14 +4,6 @@ from url_shortener.services.code_generator import RandomShortCodeGenerator
 from url_shortener.services.url_shortener_service import UrlShortenerService
 
 
-class FakeOwner:
-    """Stand-in for authentication.ServiceUser — a real JWT-derived owner has no DB row."""
-
-    def __init__(self, id, email):
-        self.id = id
-        self.email = email
-
-
 class RandomShortCodeGeneratorTest(TestCase):
     def test_generate_default_length(self):
         code = RandomShortCodeGenerator().generate()
@@ -24,22 +16,27 @@ class RandomShortCodeGeneratorTest(TestCase):
 
 class UrlShortenerServiceTest(TestCase):
     def setUp(self):
-        self.owner = FakeOwner(id=1, email="alice@example.com")
+        self.owner_id = 1
+        self.owner_email = "alice@example.com"
 
     def test_create_short_url(self):
-        url_obj = UrlShortenerService().create_short_url("https://www.google.com", self.owner)
+        url_obj = UrlShortenerService().create_short_url(
+            "https://www.google.com", self.owner_id, self.owner_email
+        )
         self.assertEqual(url_obj.original_url, "https://www.google.com")
         self.assertEqual(len(url_obj.short_url), 6)
-        self.assertEqual(url_obj.owner_id, self.owner.id)
-        self.assertEqual(url_obj.owner_email, self.owner.email)
+        self.assertEqual(url_obj.owner_id, self.owner_id)
+        self.assertEqual(url_obj.owner_email, self.owner_email)
 
     def test_resolve_existing_short_code(self):
         service = UrlShortenerService()
-        url_obj = service.create_short_url("https://www.example.com", self.owner)
+        url_obj = service.create_short_url(
+            "https://www.example.com", self.owner_id, self.owner_email
+        )
         result = service.resolve(url_obj.short_url)
         self.assertEqual(result["original_url"], "https://www.example.com")
-        self.assertEqual(result["owner_id"], self.owner.id)
-        self.assertEqual(result["owner_email"], self.owner.email)
+        self.assertEqual(result["owner_id"], self.owner_id)
+        self.assertEqual(result["owner_email"], self.owner_email)
 
     def test_resolve_unknown_short_code(self):
         self.assertIsNone(UrlShortenerService().resolve("missing"))

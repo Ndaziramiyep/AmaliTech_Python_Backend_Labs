@@ -7,6 +7,8 @@ from url_shortener.models import Url
 
 class UrlCreateSerializer(serializers.Serializer):
     original_url = serializers.URLField(max_length=2000)
+    owner_id = serializers.IntegerField()
+    owner_email = serializers.EmailField()
 
     def validate_original_url(self, value):
         if not value.startswith(('http://', 'https://')):

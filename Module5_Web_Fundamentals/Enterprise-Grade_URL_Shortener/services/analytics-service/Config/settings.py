@@ -2,7 +2,6 @@
 Django settings for the analytics-service project.
 """
 
-from datetime import timedelta
 from pathlib import Path
 import environ
 
@@ -31,7 +30,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "analytics",
     "rest_framework",
-    "rest_framework_simplejwt",
     "drf_spectacular",
     "corsheaders",
 ]
@@ -70,7 +68,8 @@ WSGI_APPLICATION = "Config.wsgi.application"
 # Database
 # analytics-service does NOT own the Users table — django.contrib.auth is
 # only installed here for this service's own local Django admin login.
-# Business API auth is stateless JWT verification (see analytics/authentication.py).
+# Click-stat endpoints are scoped by an owner_id query param the caller
+# supplies directly, not by any authenticated identity.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -103,21 +102,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # REST Framework Configuration
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "analytics.authentication.StatelessJWTAuthentication",
-    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticated",
+        "rest_framework.permissions.AllowAny",
     ],
-}
-
-# JWT Configuration — SIGNING_KEY must match auth-service's JWT_SECRET_KEY so
-# tokens it issues verify here. This service only ever reads tokens; it
-# never issues them.
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "SIGNING_KEY": env("JWT_SECRET_KEY", default="change-me-shared-jwt-signing-key"),
 }
 
 # Shared secret url-service sends as X-Internal-Key when reporting click

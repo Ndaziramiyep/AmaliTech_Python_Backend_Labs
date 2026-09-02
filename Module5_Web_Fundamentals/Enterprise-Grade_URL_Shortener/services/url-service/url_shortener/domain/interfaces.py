@@ -20,7 +20,7 @@ class UrlRepository(ABC):
         ...
 
     @abstractmethod
-    def create(self, original_url: str, short_code: str, owner) -> Url:
+    def create(self, original_url: str, short_code: str, owner_id: int, owner_email: str) -> Url:
         ...
 
     @abstractmethod

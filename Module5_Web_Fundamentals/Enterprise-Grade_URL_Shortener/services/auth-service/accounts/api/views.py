@@ -3,32 +3,13 @@ from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.api.serializers import LoginSerializer, RegisterSerializer
 
 
-class TokenResponseSerializer(serializers.Serializer):
+class UserResponseSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     email = serializers.EmailField()
-    access = serializers.CharField()
-    refresh = serializers.CharField()
-
-
-def _tokens_for_user(user):
-    refresh = RefreshToken.for_user(user)
-    # Embed the email as a custom claim so downstream services (url-service,
-    # analytics-service) can read it straight off the token instead of
-    # calling back here or keeping their own Users table.
-    refresh['email'] = user.email
-    access = refresh.access_token
-    access['email'] = user.email
-    return {
-        'id': user.id,
-        'email': user.email,
-        'access': str(access),
-        'refresh': str(refresh),
-    }
 
 
 class RegisterView(APIView):
@@ -36,8 +17,8 @@ class RegisterView(APIView):
 
     @extend_schema(
         request=RegisterSerializer,
-        responses={201: TokenResponseSerializer},
-        description="Register a new user account with email, password, and password confirmation. Returns JWT access and refresh tokens.",
+        responses={201: UserResponseSerializer},
+        description="Register a new user account with email, password, and password confirmation.",
     )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -46,7 +27,7 @@ class RegisterView(APIView):
 
         user = serializer.save()
 
-        return Response(_tokens_for_user(user), status=status.HTTP_201_CREATED)
+        return Response({'id': user.id, 'email': user.email}, status=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
@@ -54,8 +35,8 @@ class LoginView(APIView):
 
     @extend_schema(
         request=LoginSerializer,
-        responses={200: TokenResponseSerializer},
-        description="Log in with email and password to receive JWT access and refresh tokens.",
+        responses={200: UserResponseSerializer},
+        description="Log in with email and password.",
     )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -64,4 +45,4 @@ class LoginView(APIView):
 
         user = serializer.validated_data['user']
 
-        return Response(_tokens_for_user(user))
+        return Response({'id': user.id, 'email': user.email})

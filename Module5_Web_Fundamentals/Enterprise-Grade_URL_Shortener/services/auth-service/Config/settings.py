@@ -2,7 +2,6 @@
 Django settings for the auth-service project.
 """
 
-from datetime import timedelta
 from pathlib import Path
 import environ
 
@@ -31,7 +30,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "accounts",
     "rest_framework",
-    "rest_framework_simplejwt",
     "drf_spectacular",
     "corsheaders",
 ]
@@ -101,28 +99,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # REST Framework Configuration
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
 }
 
-# JWT Configuration.
-# JWT_SECRET_KEY (NOT Django's own SECRET_KEY) is the signing key shared with
-# url-service and analytics-service so they can verify tokens issued here
-# without calling back to this service or having their own Users table.
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "SIGNING_KEY": env("JWT_SECRET_KEY", default="change-me-shared-jwt-signing-key"),
-}
-
 # drf-spectacular Configuration
 SPECTACULAR_SETTINGS = {
     "TITLE": "Auth Service API",
-    "DESCRIPTION": "Registration, login, and JWT issuance for the URL shortener platform",
+    "DESCRIPTION": "Registration and login for the URL shortener platform",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }

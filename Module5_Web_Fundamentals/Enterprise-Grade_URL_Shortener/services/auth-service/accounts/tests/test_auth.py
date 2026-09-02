@@ -14,8 +14,8 @@ class RegisterAPITest(APITestCase):
         response = self.client.post(reverse('register'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        self.assertEqual(response.data['email'], 'alice@example.com')
+        self.assertIn('id', response.data)
         self.assertTrue(User.objects.filter(email='alice@example.com').exists())
 
     def test_register_duplicate_email(self):
@@ -63,17 +63,8 @@ class LoginAPITest(APITestCase):
         response = self.client.post(reverse('login'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
-
-    def test_login_includes_email_claim(self):
-        import jwt
-
-        data = {'email': 'alice@example.com', 'password': 'StrongPass123'}
-        response = self.client.post(reverse('login'), data, format='json')
-
-        payload = jwt.decode(response.data['access'], options={"verify_signature": False})
-        self.assertEqual(payload['email'], 'alice@example.com')
+        self.assertEqual(response.data['id'], self.user.id)
+        self.assertEqual(response.data['email'], 'alice@example.com')
 
     def test_login_invalid_credentials(self):
         data = {'email': 'alice@example.com', 'password': 'wrong-password'}
