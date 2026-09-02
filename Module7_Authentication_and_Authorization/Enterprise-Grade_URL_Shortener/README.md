@@ -81,11 +81,12 @@ of one container per service.
 
 ## 🔧 Setup Instructions
 
-There's no root-level `.env` — each service under `services/` still keeps its
-own `Dockerfile` and its own `.env`/`.env.example` (secrets included).
-Orchestration, though, is one level up: a single root-level
-`docker-compose.yml` builds and starts all three services together, plus one
-shared Postgres container (all three databases side by side) and Redis.
+Each service under `services/` still keeps its own `Dockerfile` and its own
+`.env`/`.env.example` (secrets included). Orchestration lives one level up: a
+single root-level `docker-compose.yml` builds and starts all three services
+together, plus one shared Postgres container (all three databases side by
+side) and Redis — the shared Postgres container's own credentials come from a
+root-level `.env` (see below), never hardcoded in `docker-compose.yml`.
 
 The root `docker-compose.yml` reads each service's config straight from its
 `env_file:` and overrides only the handful of values that must differ between
@@ -101,19 +102,25 @@ The root `docker-compose.yml` reads each service's config straight from its
 
 ### Option 1: Run with Docker (Recommended)
 
-1. **Copy each service's env file** (only needed once — real `.env` files are
-   gitignored, so if they're already present you can skip this)
+1. **Copy the root env file and each service's env file** (only needed once —
+   real `.env` files are gitignored, so if they're already present you can
+   skip this)
    ```bash
+   cp .env.example .env
    cp services/auth-service/.env.example services/auth-service/.env
    cp services/url-service/.env.example services/url-service/.env
    cp services/analytics-service/.env.example services/analytics-service/.env
    ```
-   `JWT_SECRET_KEY` must be identical across all three; `INTERNAL_API_KEY` must
-   be identical between url-service and analytics-service. The `.env.example`
-   files already ship with matching placeholder values — change them together
-   if you change them at all. `POSTGRES_HOST`/`POSTGRES_PORT` in each file
-   (`localhost:5432`) match the shared Postgres container defined in the root
-   `docker-compose.yml`, so they don't need to be touched either.
+   The root `.env` holds the shared Postgres container's own credentials
+   (`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`) — that's what
+   `docker-compose.yml` reads via `env_file:`, nothing is hardcoded there.
+   `JWT_SECRET_KEY` must be identical across all three service `.env` files;
+   `INTERNAL_API_KEY` must be identical between url-service and
+   analytics-service. The `.env.example` files already ship with matching
+   placeholder values — change them together if you change them at all.
+   `POSTGRES_HOST`/`POSTGRES_PORT` in each service's file (`localhost:5432`)
+   match the shared Postgres container, so they don't need to be touched
+   either.
 
 2. **Build and start everything, from the repo root**
    ```bash
@@ -472,6 +479,7 @@ Enterprise-Grade_URL_Shortener/
 ├── db/
 │   └── init-databases.sh          # creates auth_service/url_service/analytics_service dbs on first boot
 ├── docker-compose.yml             # shared postgres + redis + all three services — the one orchestration file
+├── .env.example                    # shared postgres container's own credentials (POSTGRES_USER/PASSWORD/DB)
 ├── services/
 │   ├── auth-service/
 │   │   ├── Config/                # settings (AUTH_USER_MODEL), urls, wsgi, asgi
