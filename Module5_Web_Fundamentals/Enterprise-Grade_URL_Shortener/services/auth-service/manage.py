@@ -3,6 +3,10 @@
 import os
 import sys
 
+# This service's own port, so `runserver` with no address/port argument
+# prints "http://localhost:8004/" instead of Django's 127.0.0.1:8000 default.
+DEFAULT_RUNSERVER_ADDR = "localhost:8004"
+
 
 def main():
     """Run administrative tasks."""
@@ -15,7 +19,14 @@ def main():
             "available on your PYTHONPATH environment variable? Did you "
             "forget to activate a virtual environment?"
         ) from exc
-    execute_from_command_line(sys.argv)
+
+    argv = sys.argv
+    if len(argv) >= 2 and argv[1] == "runserver" and not any(
+        not arg.startswith("-") for arg in argv[2:]
+    ):
+        argv = argv + [DEFAULT_RUNSERVER_ADDR]
+
+    execute_from_command_line(argv)
 
 
 if __name__ == "__main__":

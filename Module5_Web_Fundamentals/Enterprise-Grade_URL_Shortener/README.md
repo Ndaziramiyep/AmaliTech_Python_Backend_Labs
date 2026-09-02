@@ -128,14 +128,17 @@ running it in Docker and running it locally, since the values that differ
    `5436`, `analytics-db` on `5435`, Redis on `6380` — matching the
    `POSTGRES_PORT`/`REDIS_URL` already set in that service's `.env`.
 
-3. **Run migrations and start the server on its own port**
+3. **Run migrations and start the server**
    ```bash
    python manage.py migrate
    python manage.py createsuperuser   # optional, for that service's admin
-   python manage.py runserver 8004    # auth-service: 8004, url-service: 8005, analytics-service: 8006
+   python manage.py runserver
    ```
-   `runserver` defaults to port `8000` if you omit the port argument — always
-   pass it explicitly, or all three services will try to bind the same port.
+   Each service's `manage.py` is patched so a bare `runserver` (no address/port
+   argument) binds to that service's own port on `localhost` — e.g.
+   analytics-service prints `Starting development server at
+   http://localhost:8006/`, not Django's usual `127.0.0.1:8000` default. Pass
+   an explicit port (`python manage.py runserver 9000`) to override it.
 
 ## 📚 API Usage
 
