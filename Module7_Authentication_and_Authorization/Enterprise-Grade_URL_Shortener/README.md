@@ -82,11 +82,14 @@ service under `services/` is entirely self-contained: its own `Dockerfile`,
 its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
 included). Every service is started on its own, in its own terminal.
 
-`docker-compose.yml` (per service) reads that service's config straight from
-its `env_file:` and overrides only the handful of values that must differ
-between "running locally" and "running in the docker network" —
-`POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
-`REDIS_URL`/`ANALYTICS_SERVICE_URL`.
+`docker-compose.yml` (per service) sets every container env var explicitly as
+`KEY: ${KEY}` — nothing hardcoded — which Docker Compose resolves from that
+service's own `.env` file in the same directory (its normal, automatic
+lookup; no `env_file:` directive needed). `POSTGRES_HOST`/`POSTGRES_PORT` (and,
+for url-service, `REDIS_URL`/`ANALYTICS_SERVICE_URL`) are set in `.env` to the
+docker-network values directly (e.g. `POSTGRES_HOST=auth-db`), since these
+services are meant to run in Docker — see the note on running a service
+locally instead, in Option 2 below.
 
 > Each service's app defaults to its own host port (`8001`/`8002`/`8003`)
 > whether started via Docker or `manage.py runserver`, and whether run via
@@ -130,10 +133,18 @@ between "running locally" and "running in the docker network" —
 ### Option 2: Run a Service Locally (Without Docker)
 
 Each service under `services/` is a self-contained Django project, using the
-same `.env` file from Option 1 above — no changes needed to switch between
-running it in Docker and running it locally, since the values that differ
-(`POSTGRES_HOST`, `POSTGRES_PORT`, etc.) are only overridden by
-`docker-compose.yml`, never baked into the `.env` file itself.
+same `.env` file from Option 1 above — but that file's `POSTGRES_HOST`
+(`auth-db`/`url-db`/`analytics-db`) and, for url-service, `REDIS_URL` /
+`ANALYTICS_SERVICE_URL`, are docker-network addresses, only resolvable from
+inside Docker's network. Running `manage.py` directly on your machine
+instead, override them at the shell first (they take priority over `.env`
+without editing it):
+
+```bash
+POSTGRES_HOST=localhost POSTGRES_PORT=5434 python manage.py runserver          # auth-service
+POSTGRES_HOST=localhost POSTGRES_PORT=5436 REDIS_URL=redis://127.0.0.1:6380/1 python manage.py runserver   # url-service
+POSTGRES_HOST=localhost POSTGRES_PORT=5435 python manage.py runserver          # analytics-service
+```
 
 1. **Create a virtual environment per service** (dependencies differ slightly
    per service, so don't share one venv across them)
