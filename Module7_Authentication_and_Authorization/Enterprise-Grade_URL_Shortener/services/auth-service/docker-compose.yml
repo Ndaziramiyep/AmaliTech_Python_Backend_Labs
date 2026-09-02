@@ -22,18 +22,10 @@ services:
     build: .
     container_name: auth_service
     command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
-    environment:
-      DEBUG: ${DEBUG}
-      SECRET_KEY: ${SECRET_KEY}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    # No environment: block here — the Dockerfile's `COPY . .` bakes this
+    # service's own .env straight into the image, and Django reads it
+    # directly at startup (Config/settings.py). Docker itself needs nothing
+    # from this container beyond what's already in the image.
     ports:
       - "8001:8000"
     depends_on:
