@@ -10,7 +10,7 @@ from django.http import Http404
 from django.shortcuts import redirect
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -27,6 +27,22 @@ SHORT_CODE_LENGTH = 6
 SHORT_CODE_ALPHABET = string.ascii_letters + string.digits
 CACHE_KEY_PREFIX = "url"
 FREE_TIER_ACTIVE_URL_LIMIT = 10
+
+# Swagger UI auto-generates its own "current instant" example for any
+# date-time field left without an explicit example, which is stale (already
+# in the past) by the time you click Execute. Supplying this example
+# ourselves — with expires_at left out — stops Swagger from doing that, so
+# "Try it out" defaults to a link that never expires instead of one that's
+# dead on arrival.
+URL_REQUEST_EXAMPLE = OpenApiExample(
+    "No expiry (most common)",
+    value={
+        "original_url": "https://example.com/some/long/path",
+        "title": "My link",
+        "tags": ["news"],
+    },
+    request_only=True,
+)
 
 
 def _cache_key(short_code):
@@ -143,13 +159,17 @@ class UrlListCreateView(APIView):
 
     @extend_schema(
         request=UrlCreateSerializer,
+        examples=[URL_REQUEST_EXAMPLE],
         responses={201: UrlSerializer, 403: None, 429: None},
         description=(
             "Create a new shortened URL. Requires authentication "
             "(register or log in via auth-service first, then send the access "
             "token via the Authorize button as 'Bearer <your-access-token>'). "
             "A custom_alias requires Premium/Admin tier. Free tier is capped at "
-            "10 active URLs. Rate limited per tier (Free: 100/day, Premium/Admin: 1000/day)."
+            "10 active URLs. Rate limited per tier (Free: 100/day, Premium/Admin: 1000/day). "
+            "Omit expires_at (or send it as null) for a link that never expires — "
+            "don't use whatever value Swagger's 'Try it out' pre-fills there, it's "
+            "just a schema placeholder and is stale by the time you submit."
         ),
     )
     def post(self, request):
@@ -245,6 +265,7 @@ class UrlDetailView(APIView):
 
     @extend_schema(
         request=UrlCreateSerializer,
+        examples=[URL_REQUEST_EXAMPLE],
         responses={200: UrlSerializer, 400: None, 403: None, 404: None, 429: None},
         description=(
             "Fully update a short code's fields. Only that URL's owner or a "
@@ -258,6 +279,7 @@ class UrlDetailView(APIView):
 
     @extend_schema(
         request=UrlCreateSerializer,
+        examples=[URL_REQUEST_EXAMPLE],
         responses={200: UrlSerializer, 403: None, 404: None, 429: None},
         description=(
             "Partially update a short code's fields (original_url, custom_alias, "
