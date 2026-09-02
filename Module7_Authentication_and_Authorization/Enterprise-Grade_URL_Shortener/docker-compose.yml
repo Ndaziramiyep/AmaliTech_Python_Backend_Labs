@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shared_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: patrick
+      # Maintenance database (pgAdmin connects here) — auth_service,
+      # url_service, and analytics_service are created alongside it by
+      # db/init-databases.sh on first boot of a fresh volume.
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - shared_postgres_data:/var/lib/postgresql/data
+      - ./db/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: url_shortener_service_redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  auth-service:
+    build: ./services/auth-service
+    container_name: auth_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    env_file:
+      - ./services/auth-service/.env
+    environment:
+      # Overrides only what must differ between a local run (values in that
+      # service's .env) and running inside the docker network.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  url-service:
+    build: ./services/url-service
+    container_name: url_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    env_file:
+      - ./services/url-service/.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/1
+      ANALYTICS_SERVICE_URL: http://analytics-service:8000
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  analytics-service:
+    build: ./services/analytics-service
+    container_name: analytics_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    env_file:
+      - ./services/analytics-service/.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+    ports:
+      - "8003:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  shared_postgres_data:
+  redis_data:
