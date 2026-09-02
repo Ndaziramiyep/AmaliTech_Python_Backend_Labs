@@ -1,174 +1,209 @@
-# URL Shortener Microservice
+# Enterprise-Grade URL Shortener — Microservices
 
-A URL shortener microservice built with Django REST Framework, featuring JWT authentication, custom user tiers, click analytics, tagging, Redis-backed caching, an async Kafka click-event pipeline, PostgreSQL persistence, Docker containerization, and interactive API documentation with Swagger UI.
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django-5.0-092E20?logo=django&logoColor=white)
+![DRF](https://img.shields.io/badge/DRF-REST%20Framework-A30000)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-Educational-lightgrey)
+
+A URL shortener platform split into three independently deployable Django REST
+Framework services. Each has its own database, its own Docker image, and its
+own `docker-compose.yml` — every service builds, runs, and is started
+entirely on its own; there is no root-level orchestration file tying them
+together, by design.
+
+| Service               | Port   | Owns              | Responsibility                                           |
+|-----------------------|--------|-------------------|----------------------------------------------------------|
+| **auth-service**      | `8001` | `auth_db` (Users) | Register, log in, issue/refresh JWTs                     |
+| **url-service**       | `8002` | `url_db` + Redis  | Create short URLs, resolve/redirect, report click events |
+| **analytics-service** | `8003` | `analytics_db`    | Record click events, serve click stats                   |
+
+```
+┌──────────────┐      register/login       ┌──────────────┐
+│   client     │ ─────────────────────────▶│ auth-service │
+│ (browser/    │                            │   :8001      │
+│  curl/etc.)  │◀──────── JWT ──────────────┘──────────────┘
+│              │
+│              │  Bearer JWT               ┌──────────────┐      click event      ┌───────────────────┐
+│              │ ─────────────────────────▶│ url-service  │ ────────────────────▶│ analytics-service  │
+└──────────────┘   create / redirect       │   :8002      │  (X-Internal-Key)     │      :8003         │
+                                            └──────────────┘                       └───────────────────┘
+```
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Technology Stack](#️-technology-stack)
+- [Prerequisites](#-prerequisites)
+- [Setup Instructions](#-setup-instructions)
+- [Authenticating Requests](#-authenticating-requests)
+- [API Usage](#-api-usage)
+- [Role-Based Access](#-role-based-access)
+- [Testing](#-testing)
+- [Database Schema](#️-database-schema)
+- [Project Structure](#-project-structure)
+- [API Endpoints](#-api-endpoints)
+- [Troubleshooting](#-troubleshooting)
+- [Development Notes](#-development-notes)
+- [Production Deployment](#-production-deployment)
 
 ## 🚀 Features
 
-- **JWT Authentication**: Register and log in with email + password; every short-URL operation is scoped to the authenticated user
-- **User Tiers**: Custom `User` model with `is_premium` and `tier` (Free / Premium / Admin). Free accounts are capped at 10 active URLs and cannot set a custom alias; premium/admin accounts are unlimited and get custom aliases + full analytics
-- **Rate Limiting**: Login is throttled to 5 attempts/minute per IP to slow down credential-stuffing attempts
-- **Ownership Enforcement**: `IsOwnerOrReadOnly` blocks any user from viewing, editing, or deleting a URL they don't own
-- **URL Shortening**: Convert long URLs into short, shareable links tied to their owner, with an optional custom alias, title/description/favicon metadata, and an expiry date
-- **Tags**: Many-to-many tagging of URLs (e.g. Marketing, Social), seeded with defaults via a data migration
-- **Click Analytics**: Every redirect publishes a click event to Kafka; an async consumer persists it as a `Click` (IP, user agent, referrer, country, city). Premium accounts get time-series and geo breakdowns
-- **Event-Driven Click Pipeline**: `RedirectUrlView` never blocks on a `Click` write — it publishes to Kafka and returns the 302 immediately, decoupling redirect latency from analytics persistence
-- **Automatic Redirect**: Short URLs redirect (302) to their original URL, skipping inactive or expired links
-- **Redis Caching**: Fast short-code lookups cached in Redis, backed by PostgreSQL as the source of truth
-- **Query Optimization**: Custom manager (`active_urls`, `expired_urls`, `popular_urls`), `select_related`/`prefetch_related` on list/detail views, and indexes on `short_code` and `created_at`
-- **REST API**: Clean, versioned (`/api/v1/`) RESTful API with proper HTTP status codes
-- **API Documentation**: Interactive Swagger UI for testing endpoints
-- **Docker Support**: Fully containerized with Docker Compose (Postgres + Redis + Kafka + web + consumer)
-- **Admin Panel**: Django admin interface for managing users, URLs, clicks, and tags
+- **JWT Authentication** (auth-service): register/login with email + password; access & refresh tokens carry custom `email`, `is_staff`, and `tier` claims
+- **Stateless cross-service auth**: url-service and analytics-service verify JWTs using a secret shared with auth-service — no network call back to auth-service, no local Users table, no coupling
+- **Role-Based Access** (url-service): a URL's owner or a staff/admin user can update, delete, or list it — anyone else gets a 403, enforced from the token's `is_staff` claim alone
+- **Tiered Permissions** (auth-service issues, url-service enforces): every user has a `tier` — Free, Premium, or Admin. Premium/Admin unlocks custom aliases; each tier gets its own daily rate limit
+- **Rate Limiting**: register/login are throttled per-IP against brute-force; url-service's write endpoints are throttled per-user at a rate that scales with tier (Free: 100/day, Premium/Admin: 1000/day)
+- **URL Shortening & Redirect** (url-service): short codes (or a Premium custom alias) backed by PostgreSQL, cached in Redis for fast lookups; supports tags, expiry, activation toggling, and per-link metadata
+- **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event; owners can query per-link and per-account click stats
+- **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
+- **API Documentation**: each service serves its own interactive Swagger UI
+- **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml`, and is started standalone — `cd services/<name> && docker compose up --build`
 
 ## 🛠️ Technology Stack
 
-- **Framework**: Django 5.0 + Django REST Framework
-- **Authentication**: JWT via `djangorestframework-simplejwt`
-- **Database**: PostgreSQL (via `psycopg` v3)
-- **Cache**: Redis (`django-redis`)
-- **Event Streaming**: Apache Kafka (KRaft mode, single broker) via `confluent-kafka`
-- **API Documentation**: drf-spectacular (OpenAPI/Swagger)
+- **Framework**: Django 5.0 + Django REST Framework, in all three services
+- **Authentication**: JWT via `djangorestframework-simplejwt` (issued by auth-service, verified statelessly elsewhere)
+- **Database**: PostgreSQL — a separate container per service
+- **Cache**: Redis (`django-redis`), used by url-service only
+- **API Documentation**: drf-spectacular (OpenAPI/Swagger) per service
 - **Server**: Gunicorn (production)
 - **Containerization**: Docker & Docker Compose
-
-## 🏗️ Architecture
-
-```
-                         ┌───────────────────────┐
-   client / browser ───▶ │   config/urls.py       │
-                         │  (routing + Swagger)   │
-                         └──────────┬─────────────┘
-                                    │
-                 ┌──────────────────┼───────────────────┐
-                 ▼                                       ▼
-       url_shortener/api/                        RedirectUrlView
-   (serializers, views, urls)                    (public, GET /{code}/)
-                 │                                       │
-                 ▼                                       ├──▶ click_count += 1 (sync)
-      services/url_shortener_service.py  ──▶  Url.objects       │
-                 │                          (URLManager)         ▼
-        ┌────────┴────────┐                              KafkaEventPublisher
-        ▼                 ▼                                     │
-  domain/interfaces   RedisUrlCache                              ▼
-  (repository, cache,        │                          Kafka topic: url-clicks
-   code generator,           ▼                                   │
-   event publisher)      Redis (cache)                           ▼
-        │                                          consume_click_events (management command)
-        ▼                                                        │
-   PostgreSQL (source of truth: User, Url, Click, Tag) ◀─────────┘
-```
-
-Layers:
-- **api/** — DRF serializers + views + routing (HTTP boundary)
-- **services/** — `UrlShortenerService` coordinates code generation, persistence, and caching; `KafkaEventPublisher` publishes domain events
-- **domain/interfaces.py** — abstract contracts (`ShortCodeGenerator`, `UrlRepository`, `UrlCacheBackend`, `EventPublisher`) the services implement, keeping the business logic decoupled from Django/Redis/Kafka specifics
-- **models.py / managers.py** — the ORM layer: `User`, `Url`, `Click`, `Tag`, and the `URLManager` custom queryset
-- **management/commands/consume_click_events.py** — long-running Kafka consumer process that turns `url-clicks` events into `Click` rows
-
-### Event-Driven Click Pipeline
-
-`RedirectUrlView` no longer writes a `Click` row on the request path. Instead:
-1. It atomically increments `Url.click_count` (cheap, and needed immediately for `UrlSerializer`/`UrlAnalyticsView` output).
-2. It publishes a JSON event (`url_id`, `ip_address`, `user_agent`, `referrer`, `clicked_at`) to the Kafka topic `url-clicks` via `KafkaEventPublisher` and redirects immediately — the heavier `Click` write never blocks the 302 response.
-3. The `consume_click_events` management command runs as its own process (the `consumer` service in `docker-compose.yml`), continuously polling `url-clicks` and persisting each event as a `Click` row.
-
-`KafkaEventPublisher.publish()` logs and swallows any broker error rather than raising, so a Kafka outage degrades click analytics (delayed/missing `Click` rows) without ever breaking the redirect itself.
-
-## 🗄️ Database Schema
-
-| Model | Key fields |
-|-------|-----------|
-| `User` (extends `AbstractUser`) | `email` (unique), `is_premium`, `tier` (`free`/`premium`/`admin`) |
-| `Url` | `original_url`, `short_code` (unique, indexed, ≤10 chars), `custom_alias` (nullable, unique), `owner` (FK → `User`, CASCADE), `tags` (M2M → `Tag`), `is_active`, `expires_at`, `title`, `description`, `favicon`, `click_count`, `created_at` (indexed) |
-| `Click` | `url` (FK → `Url`, CASCADE), `clicked_at`, `ip_address`, `city`, `country`, `user_agent`, `referrer` |
-| `Tag` | `name` (unique) |
-
-### Custom manager (`Url.objects`)
-- `active_urls()` — `is_active=True` and not expired
-- `expired_urls()` — has an `expires_at` in the past
-- `popular_urls()` — ordered by `click_count` descending
-- `with_related()` — `select_related('owner')` + `prefetch_related('tags')` to avoid N+1 queries on list/detail views
 
 ## 📋 Prerequisites
 
 - Python 3.11+
-- Docker & Docker Compose (for containerized setup, or to run Postgres/Redis/Kafka locally)
+- Docker & Docker Compose (for containerized setup, or to run Postgres/Redis locally)
 
 ## 🔧 Setup Instructions
 
+There's no root-level `.env` and no root-level `docker-compose.yml` — each
+service under `services/` is entirely self-contained: its own `Dockerfile`,
+its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
+included). Every service is started on its own, in its own terminal.
+
+`docker-compose.yml` (per service) reads that service's config straight from
+its `env_file:` and overrides only the handful of values that must differ
+between "running locally" and "running in the docker network" —
+`POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
+`REDIS_URL`/`ANALYTICS_SERVICE_URL`.
+
+> Each service's app defaults to its own host port (`8001`/`8002`/`8003`)
+> whether started via Docker or `manage.py runserver`, and whether run via
+> their own `docker-compose.yml` or locally — so don't run the same service
+> both ways at once, but the three *different* services (auth, url, analytics)
+> are meant to all be running at the same time, each on its own port, for the
+> platform to actually work end to end.
+
 ### Option 1: Run with Docker (Recommended)
 
-1. **Copy environment file**
+1. **Copy each service's env file** (only needed once — real `.env` files are
+   gitignored, so if they're already present you can skip this)
    ```bash
-   cp .env.example .env
+   cp services/auth-service/.env.example services/auth-service/.env
+   cp services/url-service/.env.example services/url-service/.env
+   cp services/analytics-service/.env.example services/analytics-service/.env
    ```
+   `JWT_SECRET_KEY` must be identical across all three; `INTERNAL_API_KEY` must
+   be identical between url-service and analytics-service. The `.env.example`
+   files already ship with matching placeholder values — change them together
+   if you change them at all.
 
-2. **Build and start containers**
+2. **Build and start each service, in its own terminal**
    ```bash
-   docker-compose up --build
+   cd services/auth-service && docker compose up --build
+   cd services/url-service && docker compose up --build
+   cd services/analytics-service && docker compose up --build
    ```
-   This starts `db` (Postgres), `redis`, a single-broker `kafka` (KRaft mode), `web` (runs migrations, then Gunicorn), and `consumer` (the `consume_click_events` Kafka consumer). It creates the Postgres database named by `POSTGRES_DB` in `.env` (defaults to `url_shortener_06`) and runs migrations automatically before starting Gunicorn.
+   Each command also starts that service's own Postgres (and Redis, for
+   url-service), so each is fully self-contained. url-service still works
+   fine if analytics-service isn't running yet — it just can't reach it to
+   report clicks, and logs a warning each time instead of failing the
+   redirect (see `clients/analytics_client.py`).
 
-3. **Access the application**
-   - API Documentation (Swagger): http://localhost:8000/docs/
-   - Django Admin: http://localhost:8000/admin/
-   - API base: http://localhost:8000/api/v1/
+3. **Access each service**
+   - auth-service: http://localhost:8001/docs/
+   - url-service: http://localhost:8002/docs/
+   - analytics-service: http://localhost:8003/docs/
+   - Django admin (per service): `:8001/admin/`, `:8002/admin/`, `:8003/admin/`
 
-### Option 2: Run Locally (Without Docker)
+### Option 2: Run a Service Locally (Without Docker)
 
-1. **Create virtual environment**
+Each service under `services/` is a self-contained Django project, using the
+same `.env` file from Option 1 above — no changes needed to switch between
+running it in Docker and running it locally, since the values that differ
+(`POSTGRES_HOST`, `POSTGRES_PORT`, etc.) are only overridden by
+`docker-compose.yml`, never baked into the `.env` file itself.
+
+1. **Create a virtual environment per service** (dependencies differ slightly
+   per service, so don't share one venv across them)
    ```bash
+   cd services/auth-service   # or url-service / analytics-service
    python -m venv venv
    venv\Scripts\activate  # Windows
-   ```
-
-2. **Install dependencies**
-   ```bash
    pip install -r requirements.txt
    ```
 
-3. **Copy `.env.example` to `.env` and fill in your values**
+2. **Start that service's own database** (and Redis, for url-service) — using
+   that service's own `docker-compose.yml` is easiest, since it starts just
+   the infra without also starting the Django app in a container:
    ```bash
-   cp .env.example .env
+   docker compose up -d auth-db                # from services/auth-service/
+   docker compose up -d url-db redis            # from services/url-service/
+   docker compose up -d analytics-db            # from services/analytics-service/
    ```
-   Local Postgres, Redis, and Kafka can be started with `docker-compose up -d db redis kafka`
-   (the Postgres container is exposed on host port `5433` to avoid clashing
-   with a locally installed Postgres on `5432`; see `POSTGRES_PORT` in `.env`.
-   Kafka's `PLAINTEXT_HOST` listener is exposed on host port `9092`, matching
-   the default `KAFKA_BOOTSTRAP_SERVERS=localhost:9092` in `.env.example`).
-   If the database named in `POSTGRES_DB` doesn't exist yet in that Postgres
-   instance, create it once: `docker exec <db-container> psql -U postgres -c "CREATE DATABASE url_shortener_06;"`
+   Each db container is exposed on the host — `auth-db` on `5434`, `url-db` on
+   `5436`, `analytics-db` on `5435`, Redis on `6380` — matching the
+   `POSTGRES_PORT`/`REDIS_URL` already set in that service's `.env`.
 
-4. **Run migrations**
+3. **Run migrations and start the server on its own port**
    ```bash
    python manage.py migrate
-   ```
-   This also seeds default tags (Marketing, Social, Personal, Business, Other) via a data migration.
-
-5. **Create superuser** (optional, for admin access)
-   ```bash
-   python manage.py createsuperuser
-   ```
-
-6. **Start the Kafka click-event consumer** (in a separate terminal)
-   ```bash
-   python manage.py consume_click_events
-   ```
-   Without this running, clicks still redirect correctly but no `Click` rows
-   are written (events sit in the `url-clicks` topic until a consumer reads them).
-
-7. **Start development server**
-   ```bash
+   python manage.py createsuperuser   # optional, for that service's admin
    python manage.py runserver
    ```
+   With no addrport argument, `runserver` normally falls back to `8000` for
+   every service — `manage.py` here instead defaults it to that service's own
+   `PORT` from `.env` (`8001`/`8002`/`8003`), so running all three locally at
+   once doesn't collide. Pass an addrport explicitly (e.g. `runserver 9000`)
+   to override it.
+
+## 🔑 Authenticating Requests
+
+Every protected endpoint expects the access token as a **Bearer token** on the
+`Authorization` header — that's the one and only place it goes:
+
+```text
+Authorization: Bearer <your-access-token>
+```
+
+**In Swagger UI** (`:8001/docs/`, `:8002/docs/`, `:8003/docs/`):
+
+1. Register or log in via auth-service's `/api/v1/auth/register/` or `/api/v1/auth/login/` and copy the `access` value from the response.
+2. On whichever service's Swagger page you want to call, click the green **Authorize** button (top right), paste just the raw token — no `Bearer` prefix, Swagger adds that — and click **Authorize**.
+3. Every "Try it out" call on that page now sends it automatically.
+
+**Via curl / any HTTP client**, set the header directly:
+```bash
+curl -X POST http://localhost:8002/api/v1/urls/ \
+  -H "Authorization: Bearer <your-access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url": "https://example.com"}'
+```
+
+The token is only ever issued by auth-service, but url-service and
+analytics-service both verify it themselves (see `security/authentication.py`
+in url-service, `authentication.py` in analytics-service) and both show the
+same Authorize button — this required manually registering
+a `drf_spectacular.extensions.OpenApiAuthenticationExtension` for
+`StatelessJWTAuthentication`, since drf-spectacular only auto-detects the
+stock `JWTAuthentication` class, not a subclass of it.
 
 ## 📚 API Usage
 
-All endpoints except registration, login, token refresh, and the public redirect require a JWT access token sent as `Authorization: Bearer <access-token>`.
+### auth-service (`:8001`)
 
-### Authentication
-
-**`POST /api/v1/auth/register/`**
+#### 1. Register — `POST /api/v1/auth/register/`
 ```json
 {
   "email": "alice@example.com",
@@ -176,188 +211,412 @@ All endpoints except registration, login, token refresh, and the public redirect
   "confirm_password": "StrongPassword123"
 }
 ```
-Response (201): `{ "id", "email", "tier", "access", "refresh" }`
+**Response** (201): `{ "id": 1, "email": "alice@example.com", "access": "...", "refresh": "..." }`
 
-**`POST /api/v1/auth/login/`** — same request/response shape as register, without `confirm_password`.
+#### 2. Login — `POST /api/v1/auth/login/`
+```json
+{ "email": "alice@example.com", "password": "StrongPassword123" }
+```
+**Response** (200): same shape as register.
 
-**`POST /api/v1/auth/refresh/`**
+#### 3. Refresh — `POST /api/v1/auth/refresh/`
 ```json
 { "refresh": "<jwt-refresh-token>" }
 ```
-Response (200): `{ "access": "<new-jwt-access-token>" }`
+**Response** (200): `{ "access": "<new-jwt-access-token>" }`
 
-### URL Operations
+### url-service (`:8002`)
 
-**`POST /api/v1/urls/`** — create a short URL (requires auth)
+#### 4. Create Short URL — `POST /api/v1/urls/` (requires `Authorization: Bearer <access-token>`)
+```json
+{ "original_url": "https://www.example.com", "tags": ["news"] }
+```
+Free tier is capped at 10 **active** URLs (a 403 past that — deactivated ones
+don't count); `custom_alias` requires Premium/Admin. `title`, `description`,
+`favicon`, `is_active`, `expires_at`, and `tags` are all optional.
+**Response** (201):
 ```json
 {
+  "id": 1,
   "original_url": "https://www.example.com",
-  "custom_alias": "mylink",
-  "title": "Example",
-  "expires_at": "2027-01-01T00:00:00Z",
-  "tags": ["Marketing", "Social"]
+  "short_url": "abc123",
+  "short_link": "http://localhost:8002/abc123/",
+  "custom_alias": null,
+  "owner": "alice@example.com",
+  "is_active": true,
+  "expires_at": null,
+  "title": null,
+  "description": null,
+  "favicon": null,
+  "click_count": 0,
+  "tags": ["news"],
+  "created_at": "2026-08-31T14:00:00Z"
 }
 ```
-Only `original_url` is required. Response (201) is the full `Url` representation including `short_code`, `short_link`, `tags`, `click_count`, `is_expired`, etc.
 
-Tier limits enforced here: a free-tier owner gets `403 Forbidden` if `custom_alias` is set (premium/admin only) or if they already have 10 active URLs (premium/admin are unlimited).
+#### 5. List Your URLs — `GET /api/v1/urls/` (requires `Authorization: Bearer <access-token>`)
+Returns only the URLs you own, paginated (`?page=`, `?page_size=`, 20/page by
+default) and filterable by exact tag name (`?tag=news`). A staff/admin user
+(see [Role-Based Access](#-role-based-access) below) gets every URL from
+every owner instead.
+**Response** (200): `{ "count": 1, "next": null, "previous": null, "results": [ <same shape as endpoint 4's response> ] }`
 
-**`GET /api/v1/urls/`** — list the authenticated user's URLs (owner `select_related`, tags `prefetch_related`)
+#### 6. Retrieve URL Details — `GET /api/v1/urls/{short_code}/` (or a `custom_alias`)
 
-**`GET /api/v1/urls/{short_code}/`** — retrieve one of the authenticated user's URLs (404/403 if not the owner)
+Public — no authentication required. Returns the same full shape as endpoint
+4's response (not just the original URL). Returns 404 if the code is
+unknown, inactive, or past its `expires_at`.
 
-**`PUT /api/v1/urls/{short_code}/`** — partially update `original_url`, `title`, `description`, `favicon`, `is_active`, `expires_at`, `tags`
+#### 7. Fully Update a Short URL — `PUT /api/v1/urls/{short_code}/` (requires `Authorization: Bearer <access-token>`)
 
-**`DELETE /api/v1/urls/{short_code}/`** — deactivate the URL (`is_active=False`); the redirect endpoint then 404s for it
+```json
+{ "original_url": "https://www.updated-example.com" }
+```
+`original_url` is required (a full update); `custom_alias`, `title`, etc. are
+still optional. Only that URL's owner, or a staff/admin user, may do this —
+anyone else gets a **403 Forbidden**.
+**Response** (200): the updated URL, same shape as endpoint 4's response.
 
-### Public Interface
+#### 8. Partially Update a Short URL — `PATCH /api/v1/urls/{short_code}/` (requires `Authorization: Bearer <access-token>`)
 
-**`GET /{short_code}/`** — redirect (302) to the original URL. Skips inactive/expired URLs (404). Atomically increments `click_count` and publishes a click event to Kafka on every hit; the `consume_click_events` consumer turns that event into a `Click` row (IP, user agent, referrer) asynchronously.
+```json
+{ "is_active": false }
+```
+Same ownership rule as PUT, but every field is optional — only what's
+submitted gets changed (e.g. deactivating a link without touching anything
+else).
+**Response** (200): the updated URL, same shape as endpoint 4's response.
 
-### Analytics (Premium only)
+#### 9. Delete a Short URL — `DELETE /api/v1/urls/{short_code}/` (requires `Authorization: Bearer <access-token>`)
+Only that URL's owner, or a staff/admin user, may do this — anyone else gets
+a **403 Forbidden**. Hard-deletes the row and cascades to analytics-service,
+removing that code's click history there too (fire-and-forget, in the
+background — see [Role-Based Access](#-role-based-access)).
+**Response** (204): empty body.
 
-**`GET /api/v1/analytics/{short_code}/`** — requires an authenticated **premium** (or admin-tier) owner; returns:
+#### 10. Redirect — `GET /{short_code}/` (or a `custom_alias`)
+Paste directly into a browser: http://localhost:8002/abc123/ → 302 to the
+original URL. Returns 404 if inactive or expired. Every successful redirect
+increments `click_count` and reports a click event (with best-effort
+geolocation) to analytics-service — both happen in a background thread, so
+they never delay the redirect itself.
+
+### analytics-service (`:8003`, requires `Authorization: Bearer <access-token>`)
+
+#### 11. Click Stats for One Short Code — `GET /api/v1/analytics/urls/{short_code}/`
+**Response** (200): `{ "short_code": "abc123", "click_count": 4, "last_clicked_at": "2026-08-31T14:05:00Z" }`
+Only counts clicks recorded under your own user id.
+
+#### 12. Your Click Summary — `GET /api/v1/analytics/summary/`
+**Response** (200): `[ { "short_code": "abc123", "click_count": 4 }, { "short_code": "xyz789", "click_count": 1 } ]`
+
+#### 13. Detailed Analytics (Premium/Admin only) — `GET /api/v1/analytics/{short_code}/`
+
+Daily time-series click counts plus a city/country geo breakdown. Free tier
+gets a **403 Forbidden**. `city`/`country` are `null` for clicks whose IP
+couldn't be geolocated (always true for private/local IPs, e.g. local dev).
+**Response** (200):
 ```json
 {
-  "short_code": "mylink",
-  "total_clicks": 42,
-  "clicks_by_country": [{"country": "US", "count": 30}, ...],
-  "clicks_by_day": [{"day": "2026-08-01", "count": 5}, ...],
-  "top_referrers": [{"referrer": "https://twitter.com", "count": 10}, ...]
+  "short_code": "abc123",
+  "click_count": 4,
+  "time_series": [ { "date": "2026-09-01", "count": 3 }, { "date": "2026-09-02", "count": 1 } ],
+  "geo_breakdown": [ { "city": "Kigali", "country": "Rwanda", "count": 3 }, { "city": null, "country": null, "count": 1 } ]
 }
 ```
-All three breakdowns are computed in SQL via `annotate()`/`Count()` (and `TruncDate()` for the daily series) rather than in Python.
+
+#### 14. Record Click (internal) — `POST` / `DELETE /api/v1/events/click/`
+
+Called by url-service, not meant for direct/public use — requires the
+`X-Internal-Key` header to match `INTERNAL_API_KEY`. `POST` records a click;
+`DELETE` (body: `{"short_codes": [...]}`) cascade-deletes click history for
+those codes, called when url-service deletes a URL.
+
+## 🔐 Role-Based Access
+
+Anyone can **read** a URL (`GET`, resolve, redirect) — but only its owner or
+a staff/admin user can update (`PUT`/`PATCH`), delete, or see it in the
+**list** endpoint. This is the classic `IsOwnerOrReadOnly` pattern (DRF's own
+tutorial convention): public read, owner-or-admin write.
+
+This is driven by an `is_staff` claim embedded in the JWT at register/login
+time (`accounts/api/views.py` in auth-service, mirroring how the `email`
+claim already works — see [Stateless JWT verification](#-development-notes)
+below), read by url-service's `IsOwnerOrReadOnly` permission
+(`url_shortener/api/permissions.py`) without any call back to auth-service.
+
+To make a user an admin, set `is_staff=True` on their row in auth-service's
+own Django admin (`http://localhost:8001/admin/`) or via
+`python manage.py createsuperuser` — then have them log in again so the new
+token carries the updated claim (existing tokens keep whatever `is_staff`
+value they were issued with until they expire).
+
+Deleting a URL you own (or any URL, as admin) hard-deletes it in `url_db`
+**and** cascades to analytics-service, removing that code's click history
+there too — both the delete and the cascade call run synchronously in the
+request/response cycle except the actual HTTP call to analytics-service,
+which fires from a background thread so a slow/unreachable analytics-service
+never delays the 204 response.
+
+### Tiered Permissions
+
+Every user has a `tier`: `Free`, `Premium`, or `Admin` (default `Free` on
+registration). Setting `tier` to `Admin` also grants `is_staff` automatically
+(`accounts/models.py`'s `User.save()`); `is_premium` is likewise kept in sync
+with `tier == "Premium"`. Change a user's tier the same way as `is_staff` —
+via auth-service's Django admin — then have them log in again for a token
+carrying the new claim.
+
+What tier unlocks today:
+
+- **`custom_alias`** on `POST`/`PUT`/`PATCH /api/v1/urls/`: Free tier gets a
+  400 (`"Custom aliases are a Premium/Admin feature."`); Premium/Admin can
+  set one, and it resolves identically to the generated `short_url`
+  everywhere (`GET`, redirect, click reporting).
+- **Active URL cap**: Free tier is capped at 10 **active** (`is_active=True`)
+  URLs — the 11th `POST` gets a 403 until one is deactivated or deleted.
+  Premium/Admin is unlimited. Deactivated URLs don't count against the cap.
+- **Detailed Analytics** (`GET /api/v1/analytics/{short_code}/` on
+  analytics-service): time-series + geo-location breakdown. Free tier gets a
+  403 (`IsPremiumOrAdmin`); the basic stats/summary endpoints stay available
+  to everyone regardless of tier.
+- **Rate limits** (see below) scale with tier.
+
+### Rate Limiting
+
+- **auth-service**: `POST /api/v1/auth/login/` is throttled to **5 requests/minute
+  per IP** (`LoginRateThrottle`, scope `login`) — brute-force protection on
+  the one endpoint that's actually guessing a password. `POST /api/v1/auth/register/`
+  gets a looser 20/minute (`AnonRateThrottle`, scope `anon`) against
+  registration spam. Both throttle before any user/tier exists yet, so
+  they're necessarily per-IP rather than per-user.
+- **url-service**: write endpoints (`POST /api/v1/urls/`,
+  `PUT`/`PATCH`/`DELETE /api/v1/urls/{short_code}/`) are throttled per user at a rate
+  that scales with their tier claim — Free: 100/day, Premium/Admin: 1000/day
+  (`TieredUserRateThrottle` in `url_shortener/api/throttling.py`). Exceeding
+  it returns a **429 Too Many Requests**. Reads (list, resolve, redirect)
+  aren't throttled.
 
 ## 🧪 Testing
 
+Each service has its own test suite:
 ```bash
-python manage.py test
+cd services/auth-service && python manage.py test
+cd services/url-service && python manage.py test
+cd services/analytics-service && python manage.py test
 ```
 
-The suite covers: `User`/`Url`/`Click`/`Tag` models, the `URLManager` queryset methods, the caching service layer, auth (register/login), URL CRUD + ownership permissions, the redirect + click-event-publishing flow, the premium-only analytics endpoint, and the Kafka producer (`KafkaEventPublisher`) + consumer (`process_click_event`) logic. Tests never require a running Kafka broker — the producer is mocked at the class level and the consumer's event-handling function is called directly.
+## 🗄️ Database Schema
+
+Each model lives in the service that owns it — there are no cross-service
+foreign keys, since each service has its own database (see
+[Key Design Decisions](#-development-notes)). Where the schema conceptually
+wants a foreign key to a row in another service's database, that reference
+is stored as a plain denormalized id/value instead (`owner_id`/`owner_email`,
+`short_code`).
+
+### auth-service — `User` (`accounts/models.py`, extends `AbstractUser`)
+
+| Field        | Type                                    | Notes                                             |
+|--------------|-----------------------------------------|---------------------------------------------------|
+| `email`      | `EmailField(unique=True)`               | Overrides `AbstractUser`'s non-unique default     |
+| `is_premium` | `BooleanField(default=False)`           | Kept in sync with `tier == "Premium"` on save     |
+| `tier`       | `CharField(choices=Free/Premium/Admin)` | Default `Free`; `Admin` also sets `is_staff=True` |
+
+Plus everything `AbstractUser` already provides (`username`, `password`,
+`is_staff`, `is_superuser`, `date_joined`, etc.).
+
+### url-service — `Url` and `Tag` (`url_shortener/models.py`)
+
+| Field                             | Type                                    | Notes                                                         |
+|-----------------------------------|-----------------------------------------|---------------------------------------------------------------|
+| `owner_id`                        | `PositiveIntegerField`                  | Denormalized reference to auth-service's `User.id` -- no FK   |
+| `owner_email`                     | `EmailField`                            | Denormalized, same reason                                     |
+| `original_url`                    | `URLField`                              | Must start with `http://` or `https://`                       |
+| `short_url`                       | `CharField(unique=True, max_length=10)` | The generated 6-character code                                |
+| `custom_alias`                    | `CharField(unique=True, null=True)`     | Premium/Admin-only; resolves identically to `short_url`       |
+| `is_active`                       | `BooleanField(default=True)`            | `False` makes the link 404 on resolve/redirect (soft-delete)  |
+| `expires_at`                      | `DateTimeField(null=True)`              | Past this timestamp, the link 404s on resolve/redirect        |
+| `title`, `description`, `favicon` | `CharField(null=True)`                  | User-supplied metadata, not auto-fetched from the destination |
+| `click_count`                     | `PositiveIntegerField(default=0)`       | Incremented atomically by url-service on every redirect       |
+| `tags`                            | `ManyToManyField(Tag)`                  | Optional, set via the `tags` field on create/update           |
+| `created_at`                      | `DateTimeField(auto_now_add=True)`      | --                                                            |
+
+`Tag` is just `name` (`CharField(unique=True)`).
+
+### analytics-service — `ClickEvent` (`analytics/models.py`)
+
+| Field                    | Type                               | Notes                                                                                                                                |
+|--------------------------|------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `short_code`             | `CharField(max_length=50)`         | Denormalized reference to url-service's `Url` -- no FK; 50 chars to fit a `custom_alias`                                             |
+| `owner_id`               | `PositiveIntegerField`             | Denormalized reference to auth-service's `User.id`                                                                                   |
+| `referrer`, `user_agent` | `CharField`                        | From the redirecting request's headers                                                                                               |
+| `ip_address`             | `GenericIPAddressField(null=True)` | --                                                                                                                                   |
+| `city`, `country`        | `CharField(null=True)`             | Populated only if the reporting client supplies them (url-service doesn't do IP geolocation today, so these stay `null` in practice) |
+| `clicked_at`             | `DateTimeField(auto_now_add=True)` | --                                                                                                                                   |
+
+> **Caveat**: because `owner_id` is a denormalized integer rather than a
+> real foreign key, resetting auth-service's database restarts its id
+> sequence from 1 — any `owner_id` values already stored in url_db/analytics_db
+> then risk colliding with a *different*, newly-registered user who happens
+> to get the same recycled id. This is a known tradeoff of the
+> database-per-service split; it isn't an issue in a system that's never had
+> auth-service's database reset independently of the others.
 
 ## 📁 Project Structure
 
 ```
 Enterprise-Grade_URL_Shortener/
-├── config/                       # Django project settings
-│   ├── settings.py               # Settings, loaded from environment variables (.env)
-│   ├── urls.py                   # Root URL routing + Swagger endpoints
-│   ├── wsgi.py                   # WSGI configuration
-│   └── asgi.py                   # ASGI configuration
-├── url_shortener/                # Main application
-│   ├── models.py                 # User, Url, Click, Tag
-│   ├── managers.py                # URLManager / URLQuerySet (active/expired/popular)
-│   ├── permissions.py             # IsOwnerOrReadOnly, IsPremiumUser
-│   ├── admin.py                   # Admin configuration for all models
-│   ├── domain/                    # Abstract interfaces (generator, repository, cache, event publisher)
-│   ├── services/                  # Business logic implementing the domain interfaces
-│   │   └── kafka_producer.py       # KafkaEventPublisher — publishes click events to Kafka
-│   ├── management/commands/       # consume_click_events.py — Kafka consumer process
-│   ├── api/                       # DRF serializers, views (auth + URLs + analytics), routing
-│   ├── migrations/                # Schema + data migration (seeds default tags)
-│   └── tests/                     # Test suite (models, services, auth, API, Kafka producer/consumer)
-├── manage.py                     # Django management script
-├── Dockerfile                    # Docker image build
-├── docker-compose.yml            # db (Postgres) + redis + kafka + web + consumer services
-├── requirements.txt              # Python dependencies
-├── .env / .env.example           # Environment configuration
-└── README.md                     # This file
+├── services/
+│   ├── auth-service/
+│   │   ├── Config/                # settings (AUTH_USER_MODEL), urls, wsgi, asgi
+│   │   ├── accounts/               # User(AbstractUser): email/is_premium/tier
+│   │   │   ├── models.py          # User model, its own migrations
+│   │   │   ├── admin.py           # UserAdmin exposing tier/is_premium
+│   │   │   └── api/               # register/login/refresh views (is_staff/tier JWT claims), serializers, urls
+│   │   ├── Dockerfile              # this service's image
+│   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
+│   │   ├── requirements.txt, manage.py, .env.example
+│   │   └── ...
+│   ├── url-service/
+│   │   ├── Config/
+│   │   ├── url_shortener/
+│   │   │   ├── models.py          # Url (owner_id/owner_email — no cross-service FK; custom_alias, tags, expiry, click_count), Tag
+│   │   │   ├── security/authentication.py  # StatelessJWTAuthentication (reads is_staff/tier claims) + its Swagger "Authorize" scheme
+│   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting + ip-api.com geolocation + cascade-delete
+│   │   │   └── api/               # views (short-code/alias gen, Redis cache, redirect+click_count, background threading), serializers, permissions (IsOwnerOrReadOnly), throttling (TieredUserRateThrottle), pagination (UrlPagination), urls
+│   │   ├── Dockerfile
+│   │   ├── docker-compose.yml      # url-db + redis + url-service — runs standalone
+│   │   └── requirements.txt, manage.py, .env.example
+│   └── analytics-service/
+│       ├── Config/
+│       ├── analytics/
+│       │   ├── models.py          # ClickEvent (city/country, short_code sized for a custom_alias)
+│       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
+│       │   └── api/                # click-record/cascade-delete + stats + detailed-analytics views, permissions (IsInternalService, IsPremiumOrAdmin)
+│       ├── Dockerfile
+│       ├── docker-compose.yml      # analytics-db + analytics-service — runs standalone
+│       └── requirements.txt, manage.py, .env.example
+└── README.md
 ```
+
+There's deliberately no root-level `Dockerfile`, `docker-compose.yml`, or `.env`
+— nothing at this level ties the services together; each is entirely
+self-contained under its own `services/<name>/` directory.
 
 ## 🎯 API Endpoints
 
-| Method | Endpoint | Auth required | Description |
-|--------|----------|----------------|-------------|
-| POST | `/api/v1/auth/register/` | No | Register with email/password/confirm_password, returns JWT tokens |
-| POST | `/api/v1/auth/login/` | No | Log in with email/password, returns JWT tokens |
-| POST | `/api/v1/auth/refresh/` | No | Exchange a refresh token for a new access token |
-| POST | `/api/v1/urls/` | Yes | Create a new short URL |
-| GET | `/api/v1/urls/` | Yes | List the authenticated user's URLs |
-| GET | `/api/v1/urls/{short_code}/` | Yes (owner) | Retrieve URL details |
-| PUT | `/api/v1/urls/{short_code}/` | Yes (owner) | Update a URL |
-| DELETE | `/api/v1/urls/{short_code}/` | Yes (owner) | Deactivate a URL |
-| GET | `/api/v1/analytics/{short_code}/` | Yes (owner, premium) | Time-series + geo click analytics |
-| GET | `/{short_code}/` | No | Redirect to the original URL, logs a click |
-| GET | `/api/schema/` | No | OpenAPI schema (JSON) |
-| GET | `/docs/` | No | Interactive Swagger UI documentation |
-| GET | `/admin/` | Session (admin) | Django admin panel |
+| Service   | Method | Endpoint                               | Auth                                 | Description                                                 |
+|-----------|--------|----------------------------------------|--------------------------------------|-------------------------------------------------------------|
+| auth      | POST   | `/api/v1/auth/register/`               | No                                   | Register, returns JWT tokens                                |
+| auth      | POST   | `/api/v1/auth/login/`                  | No                                   | Log in, returns JWT tokens (5/min throttle)                 |
+| auth      | POST   | `/api/v1/auth/refresh/`                | No                                   | Exchange refresh token for new access token                 |
+| url       | POST   | `/api/v1/urls/`                        | Yes                                  | Create a new short URL (Free: capped at 10 active)          |
+| url       | GET    | `/api/v1/urls/`                        | Yes                                  | List your own URLs, paginated + ?tag= (all URLs for admins) |
+| url       | GET    | `/api/v1/urls/{short_code}/`           | No                                   | Retrieve full URL details (public read)                     |
+| url       | PUT    | `/api/v1/urls/{short_code}/`           | Owner or admin                       | Fully update a short code                                   |
+| url       | PATCH  | `/api/v1/urls/{short_code}/`           | Owner or admin                       | Partially update a short code                               |
+| url       | DELETE | `/api/v1/urls/{short_code}/`           | Owner or admin                       | Delete a short code, cascading to analytics                 |
+| url       | GET    | `/{short_code}/`                       | No                                   | Redirect to the original URL; reports a click event         |
+| analytics | GET    | `/api/v1/analytics/urls/{short_code}/` | Yes                                  | Click count + last click time for a code you own            |
+| analytics | GET    | `/api/v1/analytics/summary/`           | Yes                                  | Click counts across all short codes you own                 |
+| analytics | GET    | `/api/v1/analytics/{short_code}/`      | Premium/Admin                        | Time-series + geo-location breakdown                        |
+| analytics | POST   | `/api/v1/events/click/`                | Internal key                         | Called by url-service only                                  |
+| analytics | DELETE | `/api/v1/events/click/`                | Internal key                         | Cascade-delete click history (called by url-service)        |
+| each      | GET    | `/api/schema/`, `/docs/`               | No                                   | OpenAPI schema / Swagger UI                                 |
+| each      | GET    | `/admin/`                              | Session (that service's local admin) | Django admin                                                |
 
 ## 🐛 Troubleshooting
 
 ### Port Already in Use
-- Change port in `docker-compose.yml` or use a different port:
-  ```bash
-  python manage.py runserver 8001
-  ```
+Each service's host port is set in its own `docker-compose.yml` (`8001`/`8002`/
+`8003` for the apps, `5434`/`5436`/`5435` for their databases, `6380` for
+Redis) — change the left side of the `ports:` mapping for the service that
+conflicts. Only the host-side number matters for this; services always talk
+to each other over the internal Docker network on the container's standard port regardless of
+how it's exposed to the host.
+
+### 401s between services / tokens not verifying
+`JWT_SECRET_KEY` must be **identical** across all three services' env. If you
+change it, restart every service (docker-compose reads env at container start).
+
+### Click events not showing up in analytics-service
+url-service never blocks a redirect on analytics-service being reachable — it
+logs a warning and moves on. Check url-service's logs for
+`Failed to record click event`, and confirm `INTERNAL_API_KEY` matches between
+url-service and analytics-service, and `ANALYTICS_SERVICE_URL` points at the
+right host (`http://analytics-service:8000` inside docker-compose).
+
+### Geo-location (city/country) always null in analytics
+
+Two expected causes, not a bug:
+
+1. **Local/private IPs never resolve.** `127.0.0.1`, `10.x`, `192.168.x`,
+   etc. have no real-world location — `ip-api.com` correctly refuses to
+   guess one. You'll only see real cities/countries when a click's
+   `REMOTE_ADDR` is a genuine public IP (e.g. testing through a real deployed
+   instance, not `localhost`).
+2. **The lookup is best-effort and silent.** If `ip-api.com` is unreachable
+   or rate-limits you, url-service logs a warning
+   (`Geolocation lookup failed for ip=...`) and still reports the click with
+   `city`/`country` as `null` — it never blocks or fails the click report
+   over a geolocation failure.
+
+### "Failed to redirect" / CORS error on `GET /{short_code}/`
+
+This is expected, not a bug — and it **only** happens when the redirect is
+followed by JavaScript's `fetch()` (exactly what Swagger UI's "Try it out"
+does), never by a real browser tab. CORS restricts cross-origin `fetch()`/XHR
+calls; it has no effect at all on a normal link click or address-bar
+navigation. What actually happens: Swagger's `fetch()` follows the 302 and
+then the **destination site** (whatever URL you shortened, e.g.
+`example.com`) refuses the cross-origin `fetch`, which is entirely that
+site's own CORS policy — url-service has no way to override a third party's
+headers. The 302 response url-service sends is already correct (a clean
+`Location:` header, nothing CORS-related blocking it). To see the real
+behavior, open the short link directly — paste it into the browser's address
+bar or click a real `<a>` link to it — never through Swagger's Execute
+button.
 
 ### Migration Issues
 ```bash
+cd services/<service-name>
 python manage.py makemigrations
 python manage.py migrate
 ```
 
-### Postgres Port Conflict
-If port `5432` is already used by a locally installed Postgres service,
-the `db` container in `docker-compose.yml` is mapped to host port `5433`
-instead. Set `POSTGRES_PORT=5433` in `.env` when running Django outside
-Docker; inside Docker the `web` service always talks to `db:5432`. When
-connecting with a tool like pgAdmin, make sure it targets port `5433`,
-not the default `5432` — otherwise it will show an empty, unrelated
-Postgres instance.
-
-### "Failed to fetch" in Swagger UI
-Usually means the dev server isn't running or crashed — check your
-terminal and restart it with `python manage.py runserver`.
-
-### Clicks redirect fine but `Click` rows / analytics never show up
-`RedirectUrlView` publishes to Kafka and returns immediately — it no longer
-writes `Click` rows itself. Make sure the consumer is actually running:
-`python manage.py consume_click_events` locally, or check
-`docker-compose logs -f consumer` in Docker. Also verify `kafka` is healthy
-(`docker-compose ps`) and that `KAFKA_BOOTSTRAP_SERVERS` matches how you're
-running things — `localhost:9092` outside Docker, `kafka:29092` for
-containers on the Compose network (see `web`/`consumer` in `docker-compose.yml`).
-A broker connection failure is logged as a warning from `KafkaEventPublisher`
-and never breaks the redirect itself, so check application logs for
-"Failed to publish event to Kafka topic" if clicks aren't showing up.
-
 ## 📝 Development Notes
 
 ### How It Works
-1. User registers/logs in and receives a JWT access + refresh token pair
-2. User submits a long URL via `POST /api/v1/urls/` with `Authorization: Bearer <access-token>`, optionally with a custom alias, metadata, expiry, and tags
-3. The service generates a unique short code (or uses the custom alias) and persists the URL in PostgreSQL
-4. The short code → original URL mapping is also cached in Redis for fast lookups
-5. Visiting `/{short_code}/` looks up an active, non-expired URL, atomically increments `click_count`, publishes a click event to the Kafka `url-clicks` topic, then redirects (302) — without waiting on a `Click` write
-6. The `consume_click_events` consumer process reads `url-clicks` and persists each event as a `Click` row, independently of request traffic
-7. Premium owners can pull aggregated click analytics (by country, by day, top referrers) for any of their URLs, computed from those `Click` rows
+1. A user registers/logs in against **auth-service** and receives a JWT access + refresh token pair, with `user_id`, `email`, `is_staff`, and `tier` claims.
+2. The user submits a long URL to **url-service** with `Authorization: Bearer <access-token>`. url-service verifies the token's signature itself (shared `JWT_SECRET_KEY`) and reads `user_id`/`email`/`is_staff`/`tier` straight from its claims — it never queries a Users table, because it doesn't have one.
+3. url-service generates a unique short code (or validates a Premium/Admin-only `custom_alias`, and enforces the Free-tier 10-active-URL cap) and persists the `Url` row — owner, destination, alias, tags, expiry, etc. — in its own `url_db`, and caches the short_code/alias → URL/owner lookup in Redis.
+4. Visiting `/{short_code}/` (or a `custom_alias`) on url-service resolves the URL (cache first, then `url_db`; 404 if inactive or past `expires_at`), atomically increments `click_count`, and redirects (302) immediately. A background thread then geolocates the IP (via a free public API) and POSTs a click event to **analytics-service** (`short_code`, `owner_id`, referrer, user-agent, IP, city, country) — entirely off the request/response path, so a slow/unreachable analytics-service or geolocation API never delays the redirect.
+5. analytics-service verifies that call came from url-service via a shared `INTERNAL_API_KEY` header and persists it in its own `analytics_db`. Owners can query aggregate click stats for their own short codes; Premium/Admin owners can also pull a time-series + geo-location breakdown.
+6. Updating, deleting, or listing a URL checks the same token's `is_staff` claim against that Url's `owner_id` — the owner or an admin may proceed, anyone else gets a 403 (reads stay public — see [Role-Based Access](#-role-based-access)); write requests are also throttled per the token's `tier` claim (see [Rate Limiting](#rate-limiting)). Deleting cascades to analytics-service's click history for that code, via the same kind of background thread as click reporting.
 
 ### Key Design Decisions
-- **PostgreSQL as source of truth**: URLs, users, and clicks are persisted in Postgres; Redis is a lookup cache in front of it, not primary storage
-- **JWT-only authentication**: No session or token-table auth — access/refresh tokens issued by `djangorestframework-simplejwt`
-- **Custom alias reuses `short_code`**: when a caller supplies `custom_alias`, it becomes the actual `short_code` (validated for uniqueness), so redirect lookups always go through a single indexed column
-- **Soft delete**: `DELETE /api/v1/urls/{short_code}/` deactivates rather than hard-deletes, preserving click history
-- **N+1 prevention**: list/detail views always go through `Url.objects.with_related()` (`select_related('owner')` + `prefetch_related('tags')`)
-- **Async click persistence via Kafka**: `Click` writes are moved off the redirect's request path so a slow or unavailable analytics store never adds latency to (or fails) a 302 redirect; `click_count` still updates synchronously since it's cheap and needed immediately in API responses
-- **Fail-open event publishing**: `KafkaEventPublisher` logs and swallows broker errors rather than raising, trading (rare, transient) analytics gaps for redirect reliability
-- **Docker**: Easy deployment and consistent environments
+- **Database-per-service**: `auth_db`, `url_db`, `analytics_db` are separate Postgres containers — no service can reach into another's tables. `Url.owner_id` / `ClickEvent.owner_id` are plain denormalized ids, not foreign keys, since the referenced User row lives in a different service's database entirely (see the [Database Schema](#️-database-schema) caveat about resetting auth-service's database independently of the others).
+- **Stateless JWT verification**: url-service and analytics-service authenticate requests purely from the JWT's signature and claims (`url_shortener/security/authentication.py`, `analytics/authentication.py`) — no synchronous call back to auth-service on every request, and no duplicated Users table to keep in sync. Each service still keeps `django.contrib.auth` installed, but only for its own local admin-panel login, which is unrelated to this JWT-based API auth.
+- **Background-thread "async" analytics**: no Celery/task-queue infrastructure exists in this project, so click reporting and geolocation (`RedirectUrlView`) and cascade-delete (`UrlDetailView.delete`) run on a plain daemon `threading.Thread` rather than blocking the response — pragmatic for this project's scale, not a durable/retryable production task queue.
+- **Free geolocation, no fabricated data**: `ip-api.com` (no API key) is queried for city/country on each click; it correctly can't resolve private/local IPs (e.g. `127.0.0.1` in local dev), so those fields stay `null` rather than showing made-up locations.
+- **Role-based access via a JWT claim, not a lookup**: url-service enforces owner-or-admin checks (`url_shortener/api/permissions.py`'s `IsOwnerOrReadOnly`) purely from the `is_staff` claim already on the token — same stateless approach as authentication itself, no call back to auth-service to check a role.
+- **Tiered rate limiting via the same claim approach**: `TieredUserRateThrottle` (`url_shortener/api/throttling.py`) picks a request quota from the token's `tier` claim alone, with no lookup either.
+- **RESTful Design**: proper HTTP methods and status codes, one Swagger UI per service.
 
 ## 🚢 Production Deployment
 
 For production deployment:
 
-1. Update `.env` with production values:
+1. Update each service's own `.env` with production values:
    - Set `DEBUG=False`
-   - Use a strong, randomly generated `SECRET_KEY` (JWT signing depends on it)
-   - Configure `ALLOWED_HOSTS`
+   - Generate strong, random values for `JWT_SECRET_KEY` and `SECRET_KEY` in every service, and `INTERNAL_API_KEY` in url-service/analytics-service — keep the shared ones (`JWT_SECRET_KEY` everywhere, `INTERNAL_API_KEY` on url-service + analytics-service) identical across the services that share them
+   - Configure `ALLOWED_HOSTS` per environment
    - Set `CORS_ALLOW_ALL_ORIGINS=False` and list real origins in `CORS_ALLOWED_ORIGINS`
 
-2. Serve via Gunicorn behind a reverse proxy (e.g. nginx), as configured in the `web` service's command in `docker-compose.yml`
+2. Each service is served via Gunicorn behind its own reverse-proxy route (or an API gateway, if you add one later)
 
-3. Ensure the `db` and `redis` volumes are backed up appropriately
-
-4. The `kafka` service here is a single, ephemeral (no persistent volume) broker meant for local/dev use — for production, run a properly persisted, multi-broker Kafka cluster (or a managed service) and point `KAFKA_BOOTSTRAP_SERVERS` at it. Run `consume_click_events` under a process supervisor (systemd, Kubernetes Deployment, etc.) so it restarts automatically and keeps `Click` rows current
+3. Ensure the `auth_postgres_data`, `url_postgres_data`, `analytics_postgres_data`, and `redis_data` volumes are backed up appropriately
 
 ## 📄 License
 
@@ -365,7 +624,7 @@ This project is created for educational purposes as part of the Python Backend c
 
 ## 👨‍💻 Author
 
-Created as Module 6: ORM & Data Access Layer — URL Shortener Microservice
+Created as Lab 1: URL Shortener Microservice — split into auth/url/analytics microservices.
 
 ---
 
