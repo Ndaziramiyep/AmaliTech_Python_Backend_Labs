@@ -1,78 +1,48 @@
-# URL Shortener Microservice
+# Enterprise-Grade URL Shortener — Microservices
 
-A URL shortener microservice built with Django REST Framework, featuring JWT authentication, custom user tiers, click analytics, tagging, Redis-backed caching, PostgreSQL persistence, Docker containerization, and interactive API documentation with Swagger UI.
+A URL shortener platform split into three independently deployable Django REST
+Framework services. Each has its own database, its own Docker image, and its
+own `docker-compose.yml` — every service builds, runs, and is started
+entirely on its own; there is no root-level orchestration file tying them
+together, by design.
+
+| Service | Port | Owns | Responsibility |
+|---|---|---|---|
+| **auth-service** | `8001` | `auth_db` (Users) | Register, log in, issue/refresh JWTs |
+| **url-service** | `8002` | `url_db` + Redis | Create short URLs, resolve/redirect, report click events |
+| **analytics-service** | `8003` | `analytics_db` | Record click events, serve click stats |
+
+```
+┌──────────────┐      register/login       ┌──────────────┐
+│   client     │ ─────────────────────────▶│ auth-service │
+│ (browser/    │                            │   :8001      │
+│  curl/etc.)  │◀──────── JWT ──────────────┘──────────────┘
+│              │
+│              │  Bearer JWT               ┌──────────────┐      click event      ┌───────────────────┐
+│              │ ─────────────────────────▶│ url-service  │ ────────────────────▶│ analytics-service  │
+└──────────────┘   create / redirect       │   :8002      │  (X-Internal-Key)     │      :8003         │
+                                            └──────────────┘                       └───────────────────┘
+```
 
 ## 🚀 Features
 
-- **JWT Authentication**: Register and log in with email + password; every short-URL operation is scoped to the authenticated user
-- **User Tiers**: Custom `User` model with `is_premium` and `tier` (Free / Premium / Admin)
-- **URL Shortening**: Convert long URLs into short, shareable links tied to their owner, with an optional custom alias, title/description/favicon metadata, and an expiry date
-- **Tags**: Many-to-many tagging of URLs (e.g. Marketing, Social), seeded with defaults via a data migration
-- **Click Analytics**: Every redirect logs a `Click` (IP, user agent, referrer, country, city); premium accounts get time-series and geo breakdowns
-- **Automatic Redirect**: Short URLs redirect (302) to their original URL, skipping inactive or expired links
-- **Redis Caching**: Fast short-code lookups cached in Redis, backed by PostgreSQL as the source of truth
-- **Query Optimization**: Custom manager (`active_urls`, `expired_urls`, `popular_urls`), `select_related`/`prefetch_related` on list/detail views, and indexes on `short_code` and `created_at`
-- **REST API**: Clean, versioned (`/api/v1/`) RESTful API with proper HTTP status codes
-- **API Documentation**: Interactive Swagger UI for testing endpoints
-- **Docker Support**: Fully containerized with Docker Compose (Postgres + Redis + web)
-- **Admin Panel**: Django admin interface for managing users, URLs, clicks, and tags
+- **JWT Authentication** (auth-service): register/login with email + password; access & refresh tokens carry a custom `email` claim
+- **Stateless cross-service auth**: url-service and analytics-service verify JWTs using a secret shared with auth-service — no network call back to auth-service, no local Users table, no coupling
+- **URL Shortening & Redirect** (url-service): short codes backed by PostgreSQL, cached in Redis for fast lookups
+- **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event; owners can query per-link and per-account click stats
+- **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
+- **API Documentation**: each service serves its own interactive Swagger UI
+- **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml`, and is started standalone — `cd services/<name> && docker compose up --build`
 
 ## 🛠️ Technology Stack
 
-- **Framework**: Django 5.0 + Django REST Framework
-- **Authentication**: JWT via `djangorestframework-simplejwt`
-- **Database**: PostgreSQL (via `psycopg` v3)
-- **Cache**: Redis (`django-redis`)
-- **API Documentation**: drf-spectacular (OpenAPI/Swagger)
+- **Framework**: Django 5.0 + Django REST Framework, in all three services
+- **Authentication**: JWT via `djangorestframework-simplejwt` (issued by auth-service, verified statelessly elsewhere)
+- **Database**: PostgreSQL — a separate container per service
+- **Cache**: Redis (`django-redis`), used by url-service only
+- **API Documentation**: drf-spectacular (OpenAPI/Swagger) per service
 - **Server**: Gunicorn (production)
 - **Containerization**: Docker & Docker Compose
-
-## 🏗️ Architecture
-
-```
-                         ┌───────────────────────┐
-   client / browser ───▶ │   config/urls.py       │
-                         │  (routing + Swagger)   │
-                         └──────────┬─────────────┘
-                                    │
-                 ┌──────────────────┼───────────────────┐
-                 ▼                                       ▼
-       url_shortener/api/                        RedirectUrlView
-   (serializers, views, urls)                    (public, GET /{code}/)
-                 │                                       │
-                 ▼                                       ▼
-      services/url_shortener_service.py  ──▶  Url.objects (URLManager)
-                 │                                       │
-        ┌────────┴────────┐                              ▼
-        ▼                 ▼                        Click (analytics)
-  domain/interfaces   RedisUrlCache
-  (repository, cache,        │
-   code generator)           ▼
-        │                Redis (cache)
-        ▼
-   PostgreSQL (source of truth: User, Url, Click, Tag)
-```
-
-Layers:
-- **api/** — DRF serializers + views + routing (HTTP boundary)
-- **services/** — `UrlShortenerService` coordinates code generation, persistence, and caching
-- **domain/interfaces.py** — abstract contracts (`ShortCodeGenerator`, `UrlRepository`, `UrlCacheBackend`) the services implement, keeping the business logic decoupled from Django/Redis specifics
-- **models.py / managers.py** — the ORM layer: `User`, `Url`, `Click`, `Tag`, and the `URLManager` custom queryset
-
-## 🗄️ Database Schema
-
-| Model | Key fields |
-|-------|-----------|
-| `User` (extends `AbstractUser`) | `email` (unique), `is_premium`, `tier` (`free`/`premium`/`admin`) |
-| `Url` | `original_url`, `short_code` (unique, indexed, ≤10 chars), `custom_alias` (nullable, unique), `owner` (FK → `User`, CASCADE), `tags` (M2M → `Tag`), `is_active`, `expires_at`, `title`, `description`, `favicon`, `click_count`, `created_at` (indexed) |
-| `Click` | `url` (FK → `Url`, CASCADE), `clicked_at`, `ip_address`, `city`, `country`, `user_agent`, `referrer` |
-| `Tag` | `name` (unique) |
-
-### Custom manager (`Url.objects`)
-- `active_urls()` — `is_active=True` and not expired
-- `expired_urls()` — has an `expires_at` in the past
-- `popular_urls()` — ordered by `click_count` descending
-- `with_related()` — `select_related('owner')` + `prefetch_related('tags')` to avoid N+1 queries on list/detail views
 
 ## 📋 Prerequisites
 
@@ -81,70 +51,129 @@ Layers:
 
 ## 🔧 Setup Instructions
 
+There's no root-level `.env` and no root-level `docker-compose.yml` — each
+service under `services/` is entirely self-contained: its own `Dockerfile`,
+its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
+included). Every service is started on its own, in its own terminal.
+
+`docker-compose.yml` (per service) reads that service's config straight from
+its `env_file:` and overrides only the handful of values that must differ
+between "running locally" and "running in the docker network" —
+`POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
+`REDIS_URL`/`ANALYTICS_SERVICE_URL`.
+
+> All three services default to the same host ports for their app (`8001`/
+> `8002`/`8003`) whether started via Docker or `manage.py runserver`, and
+> whether run via their own `docker-compose.yml` or locally — so don't run the
+> same service both ways at once, but the three *different* services (auth,
+> url, analytics) are meant to all be running at the same time, each on its
+> own port, for the platform to actually work end to end.
+
 ### Option 1: Run with Docker (Recommended)
 
-1. **Copy environment file**
+1. **Copy each service's env file** (only needed once — real `.env` files are
+   gitignored, so if they're already present you can skip this)
    ```bash
-   cp .env.example .env
+   cp services/auth-service/.env.example services/auth-service/.env
+   cp services/url-service/.env.example services/url-service/.env
+   cp services/analytics-service/.env.example services/analytics-service/.env
    ```
+   `JWT_SECRET_KEY` must be identical across all three; `INTERNAL_API_KEY` must
+   be identical between url-service and analytics-service. The `.env.example`
+   files already ship with matching placeholder values — change them together
+   if you change them at all.
 
-2. **Build and start containers**
+2. **Build and start each service, in its own terminal**
    ```bash
-   docker-compose up --build
+   cd services/auth-service && docker compose up --build
+   cd services/url-service && docker compose up --build
+   cd services/analytics-service && docker compose up --build
    ```
-   This creates the Postgres database named by `POSTGRES_DB` in `.env` (defaults to `url_shortener_06`) and runs migrations automatically before starting Gunicorn.
+   Each command also starts that service's own Postgres (and Redis, for
+   url-service), so each is fully self-contained. url-service still works
+   fine if analytics-service isn't running yet — it just can't reach it to
+   report clicks, and logs a warning each time instead of failing the
+   redirect (see `clients/analytics_client.py`).
 
-3. **Access the application**
-   - API Documentation (Swagger): http://localhost:8000/docs/
-   - Django Admin: http://localhost:8000/admin/
-   - API base: http://localhost:8000/api/v1/
+3. **Access each service**
+   - auth-service: http://localhost:8001/docs/
+   - url-service: http://localhost:8002/docs/
+   - analytics-service: http://localhost:8003/docs/
+   - Django admin (per service): `:8001/admin/`, `:8002/admin/`, `:8003/admin/`
 
-### Option 2: Run Locally (Without Docker)
+### Option 2: Run a Service Locally (Without Docker)
 
-1. **Create virtual environment**
+Each service under `services/` is a self-contained Django project, using the
+same `.env` file from Option 1 above — no changes needed to switch between
+running it in Docker and running it locally, since the values that differ
+(`POSTGRES_HOST`, `POSTGRES_PORT`, etc.) are only overridden by
+`docker-compose.yml`, never baked into the `.env` file itself.
+
+1. **Create a virtual environment per service** (dependencies differ slightly
+   per service, so don't share one venv across them)
    ```bash
+   cd services/auth-service   # or url-service / analytics-service
    python -m venv venv
    venv\Scripts\activate  # Windows
-   ```
-
-2. **Install dependencies**
-   ```bash
    pip install -r requirements.txt
    ```
 
-3. **Copy `.env.example` to `.env` and fill in your values**
+2. **Start that service's own database** (and Redis, for url-service) — using
+   that service's own `docker-compose.yml` is easiest, since it starts just
+   the infra without also starting the Django app in a container:
    ```bash
-   cp .env.example .env
+   docker compose up -d auth-db                # from services/auth-service/
+   docker compose up -d url-db redis            # from services/url-service/
+   docker compose up -d analytics-db            # from services/analytics-service/
    ```
-   Local Postgres and Redis can be started with `docker-compose up -d db redis`
-   (the Postgres container is exposed on host port `5433` to avoid clashing
-   with a locally installed Postgres on `5432`; see `POSTGRES_PORT` in `.env`).
-   If the database named in `POSTGRES_DB` doesn't exist yet in that Postgres
-   instance, create it once: `docker exec <db-container> psql -U postgres -c "CREATE DATABASE url_shortener_06;"`
+   Each db container is exposed on the host — `auth-db` on `5434`, `url-db` on
+   `5436`, `analytics-db` on `5435`, Redis on `6380` — matching the
+   `POSTGRES_PORT`/`REDIS_URL` already set in that service's `.env`.
 
-4. **Run migrations**
+3. **Run migrations and start the server on its own port**
    ```bash
    python manage.py migrate
+   python manage.py createsuperuser   # optional, for that service's admin
+   python manage.py runserver 8001    # auth-service: 8001, url-service: 8002, analytics-service: 8003
    ```
-   This also seeds default tags (Marketing, Social, Personal, Business, Other) via a data migration.
+   `runserver` defaults to port `8000` if you omit the port argument — always
+   pass it explicitly, or all three services will try to bind the same port.
 
-5. **Create superuser** (optional, for admin access)
-   ```bash
-   python manage.py createsuperuser
-   ```
+## 🔑 Authenticating Requests
 
-6. **Start development server**
-   ```bash
-   python manage.py runserver
-   ```
+Every protected endpoint expects the access token as a **Bearer token** on the
+`Authorization` header — that's the one and only place it goes:
+
+```text
+Authorization: Bearer <your-access-token>
+```
+
+**In Swagger UI** (`:8001/docs/`, `:8002/docs/`, `:8003/docs/`):
+
+1. Register or log in via auth-service's `/api/auth/register/` or `/api/auth/login/` and copy the `access` value from the response.
+2. On whichever service's Swagger page you want to call, click the green **Authorize** button (top right), paste just the raw token — no `Bearer` prefix, Swagger adds that — and click **Authorize**.
+3. Every "Try it out" call on that page now sends it automatically.
+
+**Via curl / any HTTP client**, set the header directly:
+```bash
+curl -X POST http://localhost:8002/api/urls/ \
+  -H "Authorization: Bearer <your-access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url": "https://example.com"}'
+```
+
+The token is only ever issued by auth-service, but url-service and
+analytics-service both verify it themselves (see `authentication.py` in each)
+and both show the same Authorize button — this required manually registering
+a `drf_spectacular.extensions.OpenApiAuthenticationExtension` for
+`StatelessJWTAuthentication`, since drf-spectacular only auto-detects the
+stock `JWTAuthentication` class, not a subclass of it.
 
 ## 📚 API Usage
 
-All endpoints except registration, login, token refresh, and the public redirect require a JWT access token sent as `Authorization: Bearer <access-token>`.
+### auth-service (`:8001`)
 
-### Authentication
-
-**`POST /api/v1/auth/register/`**
+#### 1. Register — `POST /api/auth/register/`
 ```json
 {
   "email": "alice@example.com",
@@ -152,167 +181,178 @@ All endpoints except registration, login, token refresh, and the public redirect
   "confirm_password": "StrongPassword123"
 }
 ```
-Response (201): `{ "id", "email", "tier", "access", "refresh" }`
+**Response** (201): `{ "id": 1, "email": "alice@example.com", "access": "...", "refresh": "..." }`
 
-**`POST /api/v1/auth/login/`** — same request/response shape as register, without `confirm_password`.
+#### 2. Login — `POST /api/auth/login/`
+```json
+{ "email": "alice@example.com", "password": "StrongPassword123" }
+```
+**Response** (200): same shape as register.
 
-**`POST /api/v1/auth/refresh/`**
+#### 3. Refresh — `POST /api/auth/refresh/`
 ```json
 { "refresh": "<jwt-refresh-token>" }
 ```
-Response (200): `{ "access": "<new-jwt-access-token>" }`
+**Response** (200): `{ "access": "<new-jwt-access-token>" }`
 
-### URL Operations
+### url-service (`:8002`)
 
-**`POST /api/v1/urls/`** — create a short URL (requires auth)
+#### 4. Create Short URL — `POST /api/urls/` (requires `Authorization: Bearer <access-token>`)
+```json
+{ "original_url": "https://www.example.com" }
+```
+**Response** (201):
 ```json
 {
+  "id": 1,
   "original_url": "https://www.example.com",
-  "custom_alias": "mylink",
-  "title": "Example",
-  "expires_at": "2027-01-01T00:00:00Z",
-  "tags": ["Marketing", "Social"]
+  "short_url": "abc123",
+  "short_link": "http://localhost:8002/abc123/",
+  "owner": "alice@example.com",
+  "created_at": "2026-08-31T14:00:00Z"
 }
 ```
-Only `original_url` is required. Response (201) is the full `Url` representation including `short_code`, `short_link`, `tags`, `click_count`, `is_expired`, etc.
 
-**`GET /api/v1/urls/`** — list the authenticated user's URLs (owner `select_related`, tags `prefetch_related`)
+#### 5. Look Up the Original URL (no redirect) — `GET /api/urls/{short_code}/`
+**Response** (200): `{ "short_url": "abc123", "original_url": "https://www.example.com" }`
 
-**`GET /api/v1/urls/{short_code}/`** — retrieve one of the authenticated user's URLs (404/403 if not the owner)
+#### 6. Redirect — `GET /{short_code}/`
+Paste directly into a browser: http://localhost:8002/abc123/ → 302 to the original URL.
+Every successful redirect also reports a click event to analytics-service.
 
-**`PUT /api/v1/urls/{short_code}/`** — partially update `original_url`, `title`, `description`, `favicon`, `is_active`, `expires_at`, `tags`
+### analytics-service (`:8003`, requires `Authorization: Bearer <access-token>`)
 
-**`DELETE /api/v1/urls/{short_code}/`** — deactivate the URL (`is_active=False`); the redirect endpoint then 404s for it
+#### 7. Click Stats for One Short Code — `GET /api/analytics/urls/{short_code}/`
+**Response** (200): `{ "short_code": "abc123", "click_count": 4, "last_clicked_at": "2026-08-31T14:05:00Z" }`
+Only counts clicks recorded under your own user id.
 
-### Public Interface
+#### 8. Your Click Summary — `GET /api/analytics/summary/`
+**Response** (200): `[ { "short_code": "abc123", "click_count": 4 }, { "short_code": "xyz789", "click_count": 1 } ]`
 
-**`GET /{short_code}/`** — redirect (302) to the original URL. Skips inactive/expired URLs (404). Logs a `Click` (IP, user agent, referrer) and atomically increments `click_count` on every hit.
-
-### Analytics (Premium only)
-
-**`GET /api/v1/analytics/{short_code}/`** — requires an authenticated **premium** (or admin-tier) owner; returns:
-```json
-{
-  "short_code": "mylink",
-  "total_clicks": 42,
-  "clicks_by_country": [{"country": "US", "count": 30}, ...],
-  "clicks_by_day": [{"day": "2026-08-01", "count": 5}, ...],
-  "top_referrers": [{"referrer": "https://twitter.com", "count": 10}, ...]
-}
-```
-All three breakdowns are computed in SQL via `annotate()`/`Count()` (and `TruncDate()` for the daily series) rather than in Python.
+#### 9. Record Click (internal) — `POST /api/events/click/`
+Called by url-service on every redirect, not meant for direct/public use — requires
+the `X-Internal-Key` header to match `INTERNAL_API_KEY`.
 
 ## 🧪 Testing
 
+Each service has its own test suite:
 ```bash
-python manage.py test
+cd services/auth-service && python manage.py test
+cd services/url-service && python manage.py test
+cd services/analytics-service && python manage.py test
 ```
-
-The suite covers: `User`/`Url`/`Click`/`Tag` models, the `URLManager` queryset methods, the caching service layer, auth (register/login), URL CRUD + ownership permissions, the redirect + click-logging flow, and the premium-only analytics endpoint.
 
 ## 📁 Project Structure
 
 ```
 Enterprise-Grade_URL_Shortener/
-├── config/                       # Django project settings
-│   ├── settings.py               # Settings, loaded from environment variables (.env)
-│   ├── urls.py                   # Root URL routing + Swagger endpoints
-│   ├── wsgi.py                   # WSGI configuration
-│   └── asgi.py                   # ASGI configuration
-├── url_shortener/                # Main application
-│   ├── models.py                 # User, Url, Click, Tag
-│   ├── managers.py                # URLManager / URLQuerySet (active/expired/popular)
-│   ├── permissions.py             # IsOwner, IsPremiumUser
-│   ├── admin.py                   # Admin configuration for all models
-│   ├── domain/                    # Abstract interfaces (generator, repository, cache)
-│   ├── services/                  # Business logic implementing the domain interfaces
-│   ├── api/                       # DRF serializers, views (auth + URLs + analytics), routing
-│   ├── migrations/                # Schema + data migration (seeds default tags)
-│   └── tests/                     # Test suite (models, services, auth, API)
-├── manage.py                     # Django management script
-├── Dockerfile                    # Docker image build
-├── docker-compose.yml            # db (Postgres) + redis + web services
-├── requirements.txt              # Python dependencies
-├── .env / .env.example           # Environment configuration
-└── README.md                     # This file
+├── services/
+│   ├── auth-service/
+│   │   ├── Config/                # settings, urls, wsgi, asgi
+│   │   ├── accounts/api/          # register/login/refresh views, serializers, urls
+│   │   ├── Dockerfile              # this service's image
+│   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
+│   │   ├── requirements.txt, manage.py, .env.example
+│   │   └── ...
+│   ├── url-service/
+│   │   ├── Config/
+│   │   ├── url_shortener/
+│   │   │   ├── models.py          # Url (owner_id/owner_email — no cross-service FK)
+│   │   │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
+│   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting
+│   │   │   ├── domain/, services/ # short-code gen, repository, Redis cache, orchestration
+│   │   │   └── api/               # views, serializers, urls
+│   │   ├── Dockerfile
+│   │   ├── docker-compose.yml      # url-db + redis + url-service — runs standalone
+│   │   └── requirements.txt, manage.py, .env.example
+│   └── analytics-service/
+│       ├── Config/
+│       ├── analytics/
+│       │   ├── models.py          # ClickEvent
+│       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
+│       │   └── api/                # click-record + stats views, permissions.IsInternalService
+│       ├── Dockerfile
+│       ├── docker-compose.yml      # analytics-db + analytics-service — runs standalone
+│       └── requirements.txt, manage.py, .env.example
+└── README.md
 ```
+
+There's deliberately no root-level `Dockerfile`, `docker-compose.yml`, or `.env`
+— nothing at this level ties the services together; each is entirely
+self-contained under its own `services/<name>/` directory.
 
 ## 🎯 API Endpoints
 
-| Method | Endpoint | Auth required | Description |
-|--------|----------|----------------|-------------|
-| POST | `/api/v1/auth/register/` | No | Register with email/password/confirm_password, returns JWT tokens |
-| POST | `/api/v1/auth/login/` | No | Log in with email/password, returns JWT tokens |
-| POST | `/api/v1/auth/refresh/` | No | Exchange a refresh token for a new access token |
-| POST | `/api/v1/urls/` | Yes | Create a new short URL |
-| GET | `/api/v1/urls/` | Yes | List the authenticated user's URLs |
-| GET | `/api/v1/urls/{short_code}/` | Yes (owner) | Retrieve URL details |
-| PUT | `/api/v1/urls/{short_code}/` | Yes (owner) | Update a URL |
-| DELETE | `/api/v1/urls/{short_code}/` | Yes (owner) | Deactivate a URL |
-| GET | `/api/v1/analytics/{short_code}/` | Yes (owner, premium) | Time-series + geo click analytics |
-| GET | `/{short_code}/` | No | Redirect to the original URL, logs a click |
-| GET | `/api/schema/` | No | OpenAPI schema (JSON) |
-| GET | `/docs/` | No | Interactive Swagger UI documentation |
-| GET | `/admin/` | Session (admin) | Django admin panel |
+| Service | Method | Endpoint | Auth | Description |
+|---|---|---|---|---|
+| auth | POST | `/api/auth/register/` | No | Register, returns JWT tokens |
+| auth | POST | `/api/auth/login/` | No | Log in, returns JWT tokens |
+| auth | POST | `/api/auth/refresh/` | No | Exchange refresh token for new access token |
+| url | POST | `/api/urls/` | Yes | Create a new short URL |
+| url | GET | `/api/urls/{short_code}/` | No | Return the original URL as JSON (no redirect) |
+| url | GET | `/{short_code}/` | No | Redirect to the original URL; reports a click event |
+| analytics | GET | `/api/analytics/urls/{short_code}/` | Yes | Click count + last click time for a code you own |
+| analytics | GET | `/api/analytics/summary/` | Yes | Click counts across all short codes you own |
+| analytics | POST | `/api/events/click/` | Internal key | Called by url-service only |
+| each | GET | `/api/schema/`, `/docs/` | No | OpenAPI schema / Swagger UI |
+| each | GET | `/admin/` | Session (that service's local admin) | Django admin |
 
 ## 🐛 Troubleshooting
 
 ### Port Already in Use
-- Change port in `docker-compose.yml` or use a different port:
-  ```bash
-  python manage.py runserver 8001
-  ```
+Each service's host port is set in its own `docker-compose.yml` (`8001`/`8002`/
+`8003` for the apps, `5434`/`5436`/`5435` for their databases, `6380` for
+Redis) — change the left side of the `ports:` mapping for the service that
+conflicts. Only the host-side number matters for this; services always talk
+to each other over the internal Docker network on the container's standard port regardless of
+how it's exposed to the host.
+
+### 401s between services / tokens not verifying
+`JWT_SECRET_KEY` must be **identical** across all three services' env. If you
+change it, restart every service (docker-compose reads env at container start).
+
+### Click events not showing up in analytics-service
+url-service never blocks a redirect on analytics-service being reachable — it
+logs a warning and moves on. Check url-service's logs for
+`Failed to record click event`, and confirm `INTERNAL_API_KEY` matches between
+url-service and analytics-service, and `ANALYTICS_SERVICE_URL` points at the
+right host (`http://analytics-service:8000` inside docker-compose).
 
 ### Migration Issues
 ```bash
+cd services/<service-name>
 python manage.py makemigrations
 python manage.py migrate
 ```
 
-### Postgres Port Conflict
-If port `5432` is already used by a locally installed Postgres service,
-the `db` container in `docker-compose.yml` is mapped to host port `5433`
-instead. Set `POSTGRES_PORT=5433` in `.env` when running Django outside
-Docker; inside Docker the `web` service always talks to `db:5432`. When
-connecting with a tool like pgAdmin, make sure it targets port `5433`,
-not the default `5432` — otherwise it will show an empty, unrelated
-Postgres instance.
-
-### "Failed to fetch" in Swagger UI
-Usually means the dev server isn't running or crashed — check your
-terminal and restart it with `python manage.py runserver`.
-
 ## 📝 Development Notes
 
 ### How It Works
-1. User registers/logs in and receives a JWT access + refresh token pair
-2. User submits a long URL via `POST /api/v1/urls/` with `Authorization: Bearer <access-token>`, optionally with a custom alias, metadata, expiry, and tags
-3. The service generates a unique short code (or uses the custom alias) and persists the URL in PostgreSQL
-4. The short code → original URL mapping is also cached in Redis for fast lookups
-5. Visiting `/{short_code}/` looks up an active, non-expired URL, atomically increments `click_count`, records a `Click`, then redirects (302)
-6. Premium owners can pull aggregated click analytics (by country, by day, top referrers) for any of their URLs
+1. A user registers/logs in against **auth-service** and receives a JWT access + refresh token pair, with `user_id` and `email` claims.
+2. The user submits a long URL to **url-service** with `Authorization: Bearer <access-token>`. url-service verifies the token's signature itself (shared `JWT_SECRET_KEY`) and reads `user_id`/`email` straight from its claims — it never queries a Users table, because it doesn't have one.
+3. url-service generates a unique short code and persists `(owner_id, owner_email, original_url, short_code)` in its own `url_db`, and caches the short_code → URL/owner lookup in Redis.
+4. Visiting `/{short_code}/` on url-service resolves the URL (cache first, then `url_db`) and redirects (302). Before redirecting, it POSTs a click event to **analytics-service** (`short_code`, `owner_id`, referrer, user-agent, IP) — fire-and-forget, with a short timeout, never blocking the redirect.
+5. analytics-service verifies that call came from url-service via a shared `INTERNAL_API_KEY` header and persists it in its own `analytics_db`. Owners can later query aggregate click stats for their own short codes.
 
 ### Key Design Decisions
-- **PostgreSQL as source of truth**: URLs, users, and clicks are persisted in Postgres; Redis is a lookup cache in front of it, not primary storage
-- **JWT-only authentication**: No session or token-table auth — access/refresh tokens issued by `djangorestframework-simplejwt`
-- **Custom alias reuses `short_code`**: when a caller supplies `custom_alias`, it becomes the actual `short_code` (validated for uniqueness), so redirect lookups always go through a single indexed column
-- **Soft delete**: `DELETE /api/v1/urls/{short_code}/` deactivates rather than hard-deletes, preserving click history
-- **N+1 prevention**: list/detail views always go through `Url.objects.with_related()` (`select_related('owner')` + `prefetch_related('tags')`)
-- **Docker**: Easy deployment and consistent environments
+- **Database-per-service**: `auth_db`, `url_db`, `analytics_db` are separate Postgres containers — no service can reach into another's tables. `Url.owner_id` / `ClickEvent.owner_id` are plain denormalized ids, not foreign keys, since the referenced User row lives in a different service's database entirely.
+- **Stateless JWT verification**: url-service and analytics-service authenticate requests purely from the JWT's signature and claims (`url_shortener/authentication.py`, `analytics/authentication.py`) — no synchronous call back to auth-service on every request, and no duplicated Users table to keep in sync. Each service still keeps `django.contrib.auth` installed, but only for its own local admin-panel login, which is unrelated to this JWT-based API auth.
+- **Fire-and-forget click events**: a redirect must succeed even if analytics-service is down, slow, or unreachable; the POST uses a 1-second timeout and swallows failures (logged, not raised).
+- **RESTful Design**: proper HTTP methods and status codes, one Swagger UI per service.
 
 ## 🚢 Production Deployment
 
 For production deployment:
 
-1. Update `.env` with production values:
+1. Update each service's own `.env` with production values:
    - Set `DEBUG=False`
-   - Use a strong, randomly generated `SECRET_KEY` (JWT signing depends on it)
-   - Configure `ALLOWED_HOSTS`
+   - Generate strong, random values for `JWT_SECRET_KEY` and `SECRET_KEY` in every service, and `INTERNAL_API_KEY` in url-service/analytics-service — keep the shared ones (`JWT_SECRET_KEY` everywhere, `INTERNAL_API_KEY` on url-service + analytics-service) identical across the services that share them
+   - Configure `ALLOWED_HOSTS` per environment
    - Set `CORS_ALLOW_ALL_ORIGINS=False` and list real origins in `CORS_ALLOWED_ORIGINS`
 
-2. Serve via Gunicorn behind a reverse proxy (e.g. nginx), as configured in the `web` service's command in `docker-compose.yml`
+2. Each service is served via Gunicorn behind its own reverse-proxy route (or an API gateway, if you add one later)
 
-3. Ensure the `db` and `redis` volumes are backed up appropriately
+3. Ensure the `auth_postgres_data`, `url_postgres_data`, `analytics_postgres_data`, and `redis_data` volumes are backed up appropriately
 
 ## 📄 License
 
@@ -320,7 +360,7 @@ This project is created for educational purposes as part of the Python Backend c
 
 ## 👨‍💻 Author
 
-Created as Module 6: ORM & Data Access Layer — URL Shortener Microservice
+Created as Lab 1: URL Shortener Microservice — split into auth/url/analytics microservices.
 
 ---
 
