@@ -8,19 +8,19 @@ together, by design.
 
 | Service | Port | Owns | Responsibility |
 |---|---|---|---|
-| **auth-service** | `8001` | `auth_db` (Users) | Register, log in, issue/refresh JWTs |
-| **url-service** | `8002` | `url_db` + Redis | Create short URLs, resolve/redirect, report click events |
-| **analytics-service** | `8003` | `analytics_db` | Record click events, serve click stats |
+| **auth-service** | `8004` | `auth_db` (Users) | Register, log in, issue/refresh JWTs |
+| **url-service** | `8005` | `url_db` + Redis | Create short URLs, resolve/redirect, report click events |
+| **analytics-service** | `8006` | `analytics_db` | Record click events, serve click stats |
 
 ```
 ┌──────────────┐      register/login       ┌──────────────┐
 │   client     │ ─────────────────────────▶│ auth-service │
-│ (browser/    │                            │   :8001      │
+│ (browser/    │                            │   :8004      │
 │  curl/etc.)  │◀──────── JWT ──────────────┘──────────────┘
 │              │
 │              │  Bearer JWT               ┌──────────────┐      click event      ┌───────────────────┐
 │              │ ─────────────────────────▶│ url-service  │ ────────────────────▶│ analytics-service  │
-└──────────────┘   create / redirect       │   :8002      │  (X-Internal-Key)     │      :8003         │
+└──────────────┘   create / redirect       │   :8005      │  (X-Internal-Key)     │      :8006         │
                                             └──────────────┘                       └───────────────────┘
 ```
 
@@ -62,8 +62,8 @@ between "running locally" and "running in the docker network" —
 `POSTGRES_HOST`/`POSTGRES_PORT`, and (url-service only)
 `REDIS_URL`/`ANALYTICS_SERVICE_URL`.
 
-> All three services default to the same host ports for their app (`8001`/
-> `8002`/`8003`) whether started via Docker or `manage.py runserver`, and
+> All three services default to the same host ports for their app (`8004`/
+> `8005`/`8006`) whether started via Docker or `manage.py runserver`, and
 > whether run via their own `docker-compose.yml` or locally — so don't run the
 > same service both ways at once, but the three *different* services (auth,
 > url, analytics) are meant to all be running at the same time, each on its
@@ -96,10 +96,10 @@ between "running locally" and "running in the docker network" —
    redirect (see `clients/analytics_client.py`).
 
 3. **Access each service**
-   - auth-service: http://localhost:8001/docs/
-   - url-service: http://localhost:8002/docs/
-   - analytics-service: http://localhost:8003/docs/
-   - Django admin (per service): `:8001/admin/`, `:8002/admin/`, `:8003/admin/`
+   - auth-service: http://localhost:8004/docs/
+   - url-service: http://localhost:8005/docs/
+   - analytics-service: http://localhost:8006/docs/
+   - Django admin (per service): `:8004/admin/`, `:8005/admin/`, `:8006/admin/`
 
 ### Option 2: Run a Service Locally (Without Docker)
 
@@ -134,7 +134,7 @@ running it in Docker and running it locally, since the values that differ
    ```bash
    python manage.py migrate
    python manage.py createsuperuser   # optional, for that service's admin
-   python manage.py runserver 8001    # auth-service: 8001, url-service: 8002, analytics-service: 8003
+   python manage.py runserver 8004    # auth-service: 8004, url-service: 8005, analytics-service: 8006
    ```
    `runserver` defaults to port `8000` if you omit the port argument — always
    pass it explicitly, or all three services will try to bind the same port.
@@ -148,7 +148,7 @@ Every protected endpoint expects the access token as a **Bearer token** on the
 Authorization: Bearer <your-access-token>
 ```
 
-**In Swagger UI** (`:8001/docs/`, `:8002/docs/`, `:8003/docs/`):
+**In Swagger UI** (`:8004/docs/`, `:8005/docs/`, `:8006/docs/`):
 
 1. Register or log in via auth-service's `/api/auth/register/` or `/api/auth/login/` and copy the `access` value from the response.
 2. On whichever service's Swagger page you want to call, click the green **Authorize** button (top right), paste just the raw token — no `Bearer` prefix, Swagger adds that — and click **Authorize**.
@@ -156,7 +156,7 @@ Authorization: Bearer <your-access-token>
 
 **Via curl / any HTTP client**, set the header directly:
 ```bash
-curl -X POST http://localhost:8002/api/urls/ \
+curl -X POST http://localhost:8005/api/urls/ \
   -H "Authorization: Bearer <your-access-token>" \
   -H "Content-Type: application/json" \
   -d '{"original_url": "https://example.com"}'
@@ -171,7 +171,7 @@ stock `JWTAuthentication` class, not a subclass of it.
 
 ## 📚 API Usage
 
-### auth-service (`:8001`)
+### auth-service (`:8004`)
 
 #### 1. Register — `POST /api/auth/register/`
 ```json
@@ -195,7 +195,7 @@ stock `JWTAuthentication` class, not a subclass of it.
 ```
 **Response** (200): `{ "access": "<new-jwt-access-token>" }`
 
-### url-service (`:8002`)
+### url-service (`:8005`)
 
 #### 4. Create Short URL — `POST /api/urls/` (requires `Authorization: Bearer <access-token>`)
 ```json
@@ -207,7 +207,7 @@ stock `JWTAuthentication` class, not a subclass of it.
   "id": 1,
   "original_url": "https://www.example.com",
   "short_url": "abc123",
-  "short_link": "http://localhost:8002/abc123/",
+  "short_link": "http://localhost:8005/abc123/",
   "owner": "alice@example.com",
   "created_at": "2026-08-31T14:00:00Z"
 }
@@ -217,10 +217,10 @@ stock `JWTAuthentication` class, not a subclass of it.
 **Response** (200): `{ "short_url": "abc123", "original_url": "https://www.example.com" }`
 
 #### 6. Redirect — `GET /{short_code}/`
-Paste directly into a browser: http://localhost:8002/abc123/ → 302 to the original URL.
+Paste directly into a browser: http://localhost:8005/abc123/ → 302 to the original URL.
 Every successful redirect also reports a click event to analytics-service.
 
-### analytics-service (`:8003`, requires `Authorization: Bearer <access-token>`)
+### analytics-service (`:8006`, requires `Authorization: Bearer <access-token>`)
 
 #### 7. Click Stats for One Short Code — `GET /api/analytics/urls/{short_code}/`
 **Response** (200): `{ "short_code": "abc123", "click_count": 4, "last_clicked_at": "2026-08-31T14:05:00Z" }`
@@ -300,8 +300,8 @@ self-contained under its own `services/<name>/` directory.
 ## 🐛 Troubleshooting
 
 ### Port Already in Use
-Each service's host port is set in its own `docker-compose.yml` (`8001`/`8002`/
-`8003` for the apps, `5434`/`5436`/`5435` for their databases, `6380` for
+Each service's host port is set in its own `docker-compose.yml` (`8004`/`8005`/
+`8006` for the apps, `5434`/`5436`/`5435` for their databases, `6380` for
 Redis) — change the left side of the `ports:` mapping for the service that
 conflicts. Only the host-side number matters for this; services always talk
 to each other over the internal Docker network on the container's standard port regardless of

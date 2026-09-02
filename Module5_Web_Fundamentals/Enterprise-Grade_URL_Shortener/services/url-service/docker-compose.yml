@@ -39,7 +39,7 @@ services:
       # url_shortener/clients/analytics_client.py. Redirects still work.
       ANALYTICS_SERVICE_URL: http://analytics-service:8000
     ports:
-      - "8002:8000"
+      - "8005:8000"
     depends_on:
       url-db:
         condition: service_healthy
