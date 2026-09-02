@@ -82,14 +82,19 @@ service under `services/` is entirely self-contained: its own `Dockerfile`,
 its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
 included). Every service is started on its own, in its own terminal.
 
-`docker-compose.yml` (per service) sets every container env var explicitly as
-`KEY: ${KEY}` — nothing hardcoded — which Docker Compose resolves from that
-service's own `.env` file in the same directory (its normal, automatic
-lookup; no `env_file:` directive needed). `POSTGRES_HOST`/`POSTGRES_PORT` (and,
-for url-service, `REDIS_URL`/`ANALYTICS_SERVICE_URL`) are set in `.env` to the
-docker-network values directly (e.g. `POSTGRES_HOST=auth-db`), since these
-services are meant to run in Docker — see the note on running a service
-locally instead, in Option 2 below.
+`docker-compose.yml` (per service) only sets env vars Docker itself actually
+needs: the Postgres image's own `POSTGRES_DB`/`POSTGRES_USER`/
+`POSTGRES_PASSWORD`, explicitly as `KEY: ${KEY}` (nothing hardcoded — Compose
+resolves each from that service's own `.env` file in the same directory, its
+normal automatic lookup). The app container gets **no** `environment:` block
+at all — its `Dockerfile` already `COPY`s that service's own `.env` into the
+image, and Django reads it directly at startup (`Config/settings.py`), so
+Docker doesn't need to pass anything through separately.
+`POSTGRES_HOST`/`POSTGRES_PORT` (and, for url-service, `REDIS_URL`/
+`ANALYTICS_SERVICE_URL`) are set in `.env` to the docker-network values
+directly (e.g. `POSTGRES_HOST=auth-db`), since these services are meant to
+run in Docker — see the note on running a service locally instead, in
+Option 2 below.
 
 > Each service's app defaults to its own host port (`8001`/`8002`/`8003`)
 > whether started via Docker or `manage.py runserver`, and whether run via
@@ -123,6 +128,10 @@ locally instead, in Option 2 below.
    fine if analytics-service isn't running yet — it just can't reach it to
    report clicks, and logs a warning each time instead of failing the
    redirect (see `clients/analytics_client.py`).
+   `--build` matters here specifically because `.env` is baked into the image
+   at build time — if you edit a service's `.env` after already building it
+   once, run `docker compose up --build` again (not just `up`) so the new
+   values actually take effect.
 
 3. **Access each service**
    - auth-service: http://localhost:8001/docs/
