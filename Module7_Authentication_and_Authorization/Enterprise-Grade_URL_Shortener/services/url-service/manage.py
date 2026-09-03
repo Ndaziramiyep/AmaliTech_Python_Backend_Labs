@@ -10,10 +10,6 @@ def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "Config.settings")
 
     if "runserver" in sys.argv:
-        # Without an explicit addrport, runserver always falls back to 8000 —
-        # which is what every service defaults to, causing collisions when
-        # more than one is running locally at once. Default to this service's
-        # own PORT (from .env) instead, same port it uses in docker-compose.
         import environ
 
         env = environ.Env()
