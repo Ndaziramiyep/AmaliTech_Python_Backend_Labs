@@ -134,10 +134,12 @@ running it in Docker and running it locally, since the values that differ
    ```bash
    python manage.py migrate
    python manage.py createsuperuser   # optional, for that service's admin
-   python manage.py runserver 8007    # auth-service: 8007, url-service: 8008, analytics-service: 8009
+   python manage.py runserver         # binds to that service's own port automatically
    ```
-   `runserver` defaults to port `8000` if you omit the port argument — always
-   pass it explicitly, or all three services will try to bind the same port.
+   Each service overrides Django's `runserver` default (`8000`) with its own
+   port — auth-service: `8007`, url-service: `8008`, analytics-service:
+   `8009` — so a bare `runserver` is always safe to run and the terminal
+   banner shows the right port. Pass a port explicitly only to override it.
 
 ## 🔑 Authenticating Requests
 
