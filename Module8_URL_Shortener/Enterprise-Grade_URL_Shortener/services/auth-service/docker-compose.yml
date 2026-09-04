@@ -1,0 +1,32 @@
+services:
+  auth-db:
+    image: postgres:16-alpine
+    container_name: auth_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # $$ so the container's own shell expands these (from the environment
+      # above), not the host running `docker compose`.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build: .
+    container_name: auth_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    ports:
+      - "8001:8000"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+volumes:
+  auth_postgres_data:
