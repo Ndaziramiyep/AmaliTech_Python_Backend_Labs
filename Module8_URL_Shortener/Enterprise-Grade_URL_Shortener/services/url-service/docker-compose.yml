@@ -1,0 +1,69 @@
+services:
+  url-db:
+    image: postgres:16-alpine
+    container_name: url_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5436:5432"
+    volumes:
+      - url_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: url_shortener_service_redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  url-service:
+    build: .
+    container_name: url_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    # No environment: block here — the Dockerfile's `COPY . .` bakes this
+    # service's own .env straight into the image, and Django reads it
+    # directly at startup (Config/settings.py). Docker itself needs nothing
+    # from this container beyond what's already in the image. If
+    # analytics-service isn't part of this run at all, click reporting just
+    # fails its request and logs a warning — see
+    # url_shortener/clients/analytics_client.py. Redirects still work.
+    ports:
+      - "8002:8000"
+    depends_on:
+      url-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery-worker:
+    build: .
+    container_name: url_service_celery_worker
+    command: celery -A Config worker -l info
+    depends_on:
+      url-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery-beat:
+    build: .
+    container_name: url_service_celery_beat
+    command: celery -A Config beat -l info
+    depends_on:
+      url-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  url_postgres_data:
+  redis_data:
