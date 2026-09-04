@@ -1,0 +1,56 @@
+services:
+  analytics-db:
+    image: postgres:16-alpine
+    container_name: analytics_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5435:5432"
+    volumes:
+      - analytics_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: analytics_service_redis
+    ports:
+      - "6381:6379"
+    volumes:
+      - analytics_redis_data:/data
+    command: redis-server --appendonly yes
+
+  analytics-service:
+    build: .
+    container_name: analytics_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    # No environment: block here — the Dockerfile's `COPY . .` bakes this
+    # service's own .env straight into the image, and Django reads it
+    # directly at startup (Config/settings.py). Docker itself needs nothing
+    # from this container beyond what's already in the image.
+    ports:
+      - "8003:8000"
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery-worker:
+    build: .
+    container_name: analytics_service_celery_worker
+    command: celery -A Config worker -l info
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  analytics_postgres_data:
+  analytics_redis_data:
