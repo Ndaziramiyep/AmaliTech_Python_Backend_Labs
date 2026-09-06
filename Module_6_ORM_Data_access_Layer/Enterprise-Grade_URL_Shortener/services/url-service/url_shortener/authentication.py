@@ -6,8 +6,6 @@ from rest_framework_simplejwt.exceptions import InvalidToken
 class ServiceUser:
     """
     A stand-in for django.contrib.auth's User, built entirely from JWT
-    claims. This service doesn't own the Users table (auth-service does),
-    so `request.user` here is never backed by a local DB row.
     """
 
     def __init__(self, user_id, email=""):
@@ -24,8 +22,7 @@ class ServiceUser:
 class StatelessJWTAuthentication(JWTAuthentication):
     """
     Verifies the JWT signature/expiry exactly like JWTAuthentication, but
-    never queries a local Users table for the token's subject — it
-    reconstructs `request.user` purely from the token's claims.
+    never queries a local Users table for the token's subject 
     """
 
     def get_user(self, validated_token):
@@ -37,11 +34,7 @@ class StatelessJWTAuthentication(JWTAuthentication):
 
 class StatelessJWTAuthenticationScheme(OpenApiAuthenticationExtension):
     """
-    Tells drf-spectacular how to document StatelessJWTAuthentication — without
-    this, Swagger has no "Authorize" button because it only auto-detects the
-    stock JWTAuthentication class, not this subclass. Paste the access token
-    issued by auth-service's /api/auth/login/ here (no "Bearer " prefix needed
-    in the Swagger dialog — it's added automatically).
+    Tells drf-spectacular how to document StatelessJWTAuthentication 
     """
 
     target_class = "url_shortener.authentication.StatelessJWTAuthentication"
