@@ -143,3 +143,25 @@ class UrlClickStatsAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['click_count'], 2)
         self.assertIsNotNone(response.data['last_clicked_at'])
+
+
+class UserClickSummaryAPITest(APITestCase):
+    """Tests for the per-user click summary endpoint."""
+
+    def setUp(self):
+        """Authenticate the test client as a stub user via a signed JWT."""
+        self.access_token = make_access_token(user_id=1, email="alice@example.com")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.access_token}")
+
+    def test_summary_groups_by_short_code(self):
+        """The click summary groups counts by short code and excludes other owners' clicks."""
+        ClickEvent.objects.create(short_code='abc123', owner_id=1)
+        ClickEvent.objects.create(short_code='abc123', owner_id=1)
+        ClickEvent.objects.create(short_code='xyz789', owner_id=1)
+        ClickEvent.objects.create(short_code='abc123', owner_id=2)  # different owner, excluded
+
+        response = self.client.get(reverse('user-click-summary'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_code = {row['short_code']: row['click_count'] for row in response.data}
+        self.assertEqual(by_code, {'abc123': 2, 'xyz789': 1})
