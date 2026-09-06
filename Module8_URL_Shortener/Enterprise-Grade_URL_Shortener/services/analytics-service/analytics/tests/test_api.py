@@ -107,3 +107,39 @@ class RecordClickAPITest(APITestCase):
         response = self.client.delete(reverse('record-click'), {'short_codes': ['abc123']}, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class UrlClickStatsAPITest(APITestCase):
+    """Tests for the per-short-code click stats endpoint."""
+
+    def setUp(self):
+        """Authenticate the test client as a stub user via a signed JWT."""
+        self.access_token = make_access_token(user_id=1, email="alice@example.com")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.access_token}")
+
+    def test_stats_require_authentication(self):
+        """Fetching stats without credentials returns a 401."""
+        self.client.credentials()
+        response = self.client.get(reverse('url-click-stats', kwargs={'short_code': 'abc123'}))
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_stats_with_no_clicks(self):
+        """A short code with no recorded clicks reports a zero count and a null timestamp."""
+        response = self.client.get(reverse('url-click-stats', kwargs={'short_code': 'abc123'}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['click_count'], 0)
+        self.assertIsNone(response.data['last_clicked_at'])
+
+    def test_stats_counts_only_own_clicks(self):
+        """Click stats for a short code only count clicks owned by the requesting user."""
+        ClickEvent.objects.create(short_code='abc123', owner_id=1)
+        ClickEvent.objects.create(short_code='abc123', owner_id=1)
+        ClickEvent.objects.create(short_code='abc123', owner_id=2)  # someone else's click on same code
+
+        response = self.client.get(reverse('url-click-stats', kwargs={'short_code': 'abc123'}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['click_count'], 2)
+        self.assertIsNotNone(response.data['last_clicked_at'])
