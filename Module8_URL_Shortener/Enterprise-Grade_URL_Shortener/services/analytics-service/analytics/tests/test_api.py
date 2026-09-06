@@ -165,3 +165,50 @@ class UserClickSummaryAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         by_code = {row['short_code']: row['click_count'] for row in response.data}
         self.assertEqual(by_code, {'abc123': 2, 'xyz789': 1})
+
+
+class DetailedAnalyticsAPITest(APITestCase):
+    """Tests for the Premium/Admin-only time-series + geo-location analytics endpoint."""
+
+    def setUp(self):
+        """Create a mix of click events across days and locations for short code 'abc123' owned by user 1."""
+        ClickEvent.objects.create(short_code='abc123', owner_id=1, city='Kigali', country='Rwanda')
+        ClickEvent.objects.create(short_code='abc123', owner_id=1, city='Kigali', country='Rwanda')
+        ClickEvent.objects.create(short_code='abc123', owner_id=1, city=None, country=None)
+        ClickEvent.objects.create(short_code='abc123', owner_id=2)  # different owner, excluded for non-admin
+
+    def authenticate(self, token):
+        """Attach the given access token as a Bearer credential on the client."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_requires_authentication(self):
+        """Fetching detailed analytics without credentials returns a 401."""
+        response = self.client.get(reverse('detailed-analytics', kwargs={'short_code': 'abc123'}))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_free_tier_forbidden(self):
+        """A Free-tier user gets a 403, not the analytics payload."""
+        self.authenticate(make_access_token(user_id=1, email="alice@example.com", tier="Free"))
+        response = self.client.get(reverse('detailed-analytics', kwargs={'short_code': 'abc123'}))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_premium_tier_gets_time_series_and_geo_breakdown(self):
+        """A Premium-tier owner gets their own click_count, time series, and geo breakdown."""
+        self.authenticate(make_access_token(user_id=1, email="alice@example.com", tier="Premium"))
+        response = self.client.get(reverse('detailed-analytics', kwargs={'short_code': 'abc123'}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['click_count'], 3)  # excludes owner_id=2's click
+        self.assertEqual(len(response.data['time_series']), 1)
+        self.assertEqual(response.data['time_series'][0]['count'], 3)
+        geo_counts = {(row['city'], row['country']): row['count'] for row in response.data['geo_breakdown']}
+        self.assertEqual(geo_counts, {('Kigali', 'Rwanda'): 2, (None, None): 1})
+
+    def test_admin_sees_all_owners_clicks(self):
+        """A staff/admin user's detailed analytics includes every owner's clicks for that code."""
+        self.authenticate(make_access_token(user_id=99, email="admin@example.com", is_staff=True))
+        response = self.client.get(reverse('detailed-analytics', kwargs={'short_code': 'abc123'}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['click_count'], 4)  # includes owner_id=2's click too
