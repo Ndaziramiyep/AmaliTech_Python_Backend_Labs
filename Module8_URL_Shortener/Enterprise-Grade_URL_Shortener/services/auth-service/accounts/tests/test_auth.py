@@ -1,9 +1,12 @@
 from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import User
+
+INTERNAL_TOKEN = "test-internal-gateway-token"
 
 
 class RegisterAPITest(APITestCase):
@@ -169,3 +172,56 @@ class LoginAPITest(APITestCase):
 
         response = self.client.post(reverse('login'), data, format='json')
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+@override_settings(INTERNAL_SERVICE_TOKEN=INTERNAL_TOKEN)
+class InternalTokenValidateAPITest(APITestCase):
+    """Tests the gateway-only endpoint backing /internal/verify's auth_request check."""
+
+    def setUp(self):
+        """Log in a user and keep their access token for the Authorization header."""
+        self.user = User.objects.create_user(
+            username='alice@example.com', email='alice@example.com', password='StrongPass123',
+        )
+        data = {'email': 'alice@example.com', 'password': 'StrongPass123'}
+        response = self.client.post(reverse('login'), data, format='json')
+        self.access_token = response.data['access']
+
+    def test_requires_internal_token(self):
+        """Calling without the X-Internal-Token header returns a 401, even with a valid access token."""
+        response = self.client.get(
+            reverse('internal-token-validate'),
+            HTTP_AUTHORIZATION=f"Bearer {self.access_token}",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_rejects_wrong_internal_token(self):
+        """Calling with an incorrect X-Internal-Token returns a 401."""
+        response = self.client.get(
+            reverse('internal-token-validate'),
+            HTTP_AUTHORIZATION=f"Bearer {self.access_token}",
+            HTTP_X_INTERNAL_TOKEN='wrong-token',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_rejects_missing_access_token(self):
+        """Calling with a valid internal token but no access token returns a 401."""
+        response = self.client.get(reverse('internal-token-validate'), HTTP_X_INTERNAL_TOKEN=INTERNAL_TOKEN)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_success_returns_identity_headers(self):
+        """A valid internal token plus a valid access token returns 200 with identity headers."""
+        response = self.client.get(
+            reverse('internal-token-validate'),
+            HTTP_AUTHORIZATION=f"Bearer {self.access_token}",
+            HTTP_X_INTERNAL_TOKEN=INTERNAL_TOKEN,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['X-User-Id'], str(self.user.id))
+        self.assertEqual(response['X-Username'], 'alice@example.com')
+        self.assertEqual(response['X-User-Tier'], User.TIER_FREE)
+        self.assertEqual(response['X-User-Is-Premium'], 'false')
