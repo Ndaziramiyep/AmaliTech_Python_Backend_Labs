@@ -58,7 +58,7 @@ together, by design.
 - **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event and persisted write-behind by a Celery worker (never written inline in the request); owners can query per-link and per-account click stats
 - **Nightly Cleanup** (url-service, Celery Beat): a scheduled job archives every URL past its `expires_at` (`is_archived=True`, deactivated, evicted from cache) once a day
 - **Structured Logging**: every service logs JSON lines to stdout, with 500-level errors (`django.request`) and security warnings (`django.security`, plus app-level warnings like a rejected internal-key or unauthorized write attempt) always captured
-- **Health Checks**: `GET /health/` on url-service and analytics-service verifies both database and Redis connectivity, returning 503 if either is down
+- **Health Checks**: `GET /health/` on every service verifies database connectivity (url-service and analytics-service also check Redis), returning 503 if anything's down
 - **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
 - **API Documentation**: each service serves its own interactive Swagger UI
 - **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml`, and is started standalone — `cd services/<name> && docker compose up --build`
@@ -144,7 +144,7 @@ Docker — see the note on running a service locally instead, in Option 2 below.
    - url-service: http://localhost:8002/docs/
    - analytics-service: http://localhost:8003/docs/
    - Django admin (per service): `:8001/admin/`, `:8002/admin/`, `:8003/admin/`
-   - Health check (url-service, analytics-service): `:8002/health/`, `:8003/health/` — `200` if database and Redis are both reachable, `503` otherwise
+   - Health check (every service): `:8001/health/`, `:8002/health/`, `:8003/health/` — `200` if the database (and, for url-service/analytics-service, Redis) is reachable, `503` otherwise
 
 ### Option 2: Run a Service Locally (Without Docker)
 
@@ -375,12 +375,13 @@ to the database) and returns 201 immediately; `DELETE` (body:
 `{"short_codes": [...]}`) cascade-deletes click history for those codes,
 called when url-service deletes a URL.
 
-#### 15. Health Check — `GET /health/` (url-service, analytics-service)
+#### 15. Health Check — `GET /health/` (every service)
 
-No authentication required. Verifies the database and Redis are both
-reachable and returns `{"status": "ok", "checks": {"database": true, "redis": true}}`
-(200), or `{"status": "unavailable", ...}` with whichever check(s) failed set
-to `false` (503) otherwise.
+No authentication required. url-service and analytics-service verify both
+database and Redis connectivity; auth-service (no cache/broker of its own)
+checks just the database. Returns `{"status": "ok", "checks": {"database": true, "redis": true}}`
+(200, `redis` omitted for auth-service), or `{"status": "unavailable", ...}`
+with whichever check(s) failed set to `false` (503) otherwise.
 
 ## 🔐 Role-Based Access
 
@@ -525,6 +526,7 @@ Enterprise-Grade_URL_Shortener/
 │   │   ├── accounts/               # User(AbstractUser): email/is_premium/tier
 │   │   │   ├── models.py          # User model, its own migrations
 │   │   │   ├── admin.py           # UserAdmin exposing tier/is_premium
+│   │   │   ├── health.py          # GET /health/ — database connectivity
 │   │   │   └── api/               # register/login/refresh views (is_staff/tier JWT claims), serializers, urls
 │   │   ├── Dockerfile              # this service's image
 │   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
@@ -584,7 +586,7 @@ self-contained under its own `services/<name>/` directory.
 | analytics | DELETE | `/api/v1/events/click/`                | Internal key                         | Cascade-delete click history (called by url-service)        |
 | each      | GET    | `/api/schema/`, `/docs/`               | No                                   | OpenAPI schema / Swagger UI                                 |
 | each      | GET    | `/admin/`                              | Session (that service's local admin) | Django admin                                                |
-| url, analytics | GET | `/health/`                         | No                                   | Database + Redis connectivity check                         |
+| each      | GET    | `/health/`                             | No                                   | Database connectivity check (+ Redis, for url/analytics)    |
 
 ## 🐛 Troubleshooting
 
@@ -665,7 +667,7 @@ python manage.py migrate
 - **Role-based access via a JWT claim, not a lookup**: url-service enforces owner-or-admin checks (`url_shortener/api/permissions.py`'s `IsOwnerOrReadOnly`) purely from the `is_staff` claim already on the token — same stateless approach as authentication itself, no call back to auth-service to check a role.
 - **Tiered rate limiting via the same claim approach**: `TieredUserRateThrottle` (`url_shortener/api/throttling.py`) picks a request quota from the token's `tier` claim alone, with no lookup either.
 - **Structured JSON logging**: every service that runs Celery logs JSON lines to stdout (`logging_utils.JSONFormatter`), with `django.request` (500s) and `django.security` (security warnings) always routed there, plus app-level `logger.warning(...)` calls at points that matter for security monitoring — a rejected `X-Internal-Key` (`analytics/api/permissions.py`), an unauthorized write attempt on someone else's URL (`url_shortener/api/permissions.py`).
-- **Health checks are real, not a static ping**: `GET /health/` on url-service and analytics-service actually queries the database (`SELECT 1`) and pings Redis, returning 503 (not 200) the moment either is unreachable — suitable for a container orchestrator's liveness/readiness probe.
+- **Health checks are real, not a static ping**: `GET /health/` on every service actually queries the database (`SELECT 1`); url-service and analytics-service also ping Redis. Returns 503 (not 200) the moment any check fails — suitable for a container orchestrator's liveness/readiness probe.
 - **RESTful Design**: proper HTTP methods and status codes, one Swagger UI per service.
 
 ## 🚢 Production Deployment
@@ -682,7 +684,7 @@ For production deployment:
 
 3. url-service and analytics-service each need their Celery worker running continuously (`celery -A Config worker -l info`) for click tracking / archiving to actually happen — `docker-compose.yml`'s `celery-worker` service covers this; url-service also needs `celery-beat` (`celery -A Config beat -l info`) for the nightly archive job to fire at all
 
-4. Point your container orchestrator's liveness/readiness probes at each service's `GET /health/` — it fails (503) the moment that service's database or Redis is unreachable
+4. Point your container orchestrator's liveness/readiness probes at each service's `GET /health/` — it fails (503) the moment that service's database (or, for url-service/analytics-service, Redis) is unreachable
 
 5. Ensure the `auth_postgres_data`, `url_postgres_data`, `analytics_postgres_data`, `redis_data`, and `analytics_redis_data` volumes are backed up appropriately
 
