@@ -127,6 +127,11 @@ SIMPLE_JWT = {
     "SIGNING_KEY": env("JWT_SECRET_KEY", default="change-me-shared-jwt-signing-key"),
 }
 
+# Shared with the API gateway (gateway/server.conf's /internal/verify) — the
+# only thing allowed to call this service's internal token-validation
+# endpoint, checked via the X-Internal-Token header.
+INTERNAL_SERVICE_TOKEN = env("INTERNAL_SERVICE_TOKEN", default="change-me-shared-gateway-token")
+
 # drf-spectacular Configuration
 SPECTACULAR_SETTINGS = {
     "TITLE": "Auth Service API",
