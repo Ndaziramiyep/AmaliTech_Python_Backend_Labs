@@ -1,3 +1,5 @@
+import logging
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
@@ -7,6 +9,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.api.serializers import LoginSerializer, RegisterSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class LoginRateThrottle(AnonRateThrottle):
@@ -84,6 +88,10 @@ class LoginView(APIView):
         """Validates login credentials and returns JWT tokens for the authenticated user."""
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
+            logger.warning(
+                "Failed login attempt for email=%s from %s",
+                request.data.get('email'), request.META.get('REMOTE_ADDR'),
+            )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         user = serializer.validated_data['user']
