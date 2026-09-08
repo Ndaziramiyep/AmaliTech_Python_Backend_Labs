@@ -2,12 +2,13 @@ import logging
 
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from accounts.api.permissions import IsInternalGateway
 from accounts.api.serializers import LoginSerializer, RegisterSerializer
 
 logger = logging.getLogger(__name__)
@@ -97,3 +98,20 @@ class LoginView(APIView):
         user = serializer.validated_data['user']
 
         return Response(_tokens_for_user(user))
+
+
+class InternalTokenValidateView(APIView):
+    """Validates a client's access token for the gateway's auth_request check (see gateway/server.conf's /internal/verify)."""
+
+    permission_classes = [IsInternalGateway, IsAuthenticated]
+
+    @extend_schema(exclude=True)
+    def get(self, request):
+        """Returns 200 with the authenticated user's identity as response headers."""
+        user = request.user
+        response = Response(status=status.HTTP_200_OK)
+        response['X-User-Id'] = str(user.id)
+        response['X-Username'] = user.email
+        response['X-User-Tier'] = user.tier
+        response['X-User-Is-Premium'] = str(user.is_premium).lower()
+        return response
