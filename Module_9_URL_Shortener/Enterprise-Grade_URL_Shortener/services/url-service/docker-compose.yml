@@ -1,0 +1,96 @@
+services:
+  url-db:
+    image: postgres:16-alpine
+    container_name: url_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5436:5432"
+    volumes:
+      - url_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: url_shortener_service_redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  url-service:
+    build: .
+    container_name: url_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    # No environment: block here — the Dockerfile's `COPY . .` bakes this
+    # service's own .env straight into the image, and Django reads it
+    # directly at startup (Config/settings.py). Docker itself needs nothing
+    # from this container beyond what's already in the image. If
+    # analytics-service isn't part of this run at all, click reporting is
+    # queued via Celery (record_click_task/delete_click_events_task) and
+    # retried with backoff until analytics-service is reachable — see
+    # url_shortener/clients/analytics_client.py and tasks.py. Redirects
+    # always return immediately either way.
+    ports:
+      - "8002:8000"
+    depends_on:
+      url-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    # "default" keeps this reachable from url-db/redis above; "gateway-net"
+    # is the network shared with the other services and the gateway (see
+    # gateway/docker-compose.yml), under the alias the gateway's server.conf
+    # expects. It's external, so it must exist before this comes up — a
+    # one-time `docker network create url_shortener_gateway`, same as copying
+    # .env.example once. This service is still fully usable standalone
+    # (Swagger, admin, direct :8002 calls) whether or not the gateway
+    # container itself is ever started.
+    networks:
+      default:
+      gateway-net:
+        aliases:
+          - shortener
+
+  celery-worker:
+    build: .
+    container_name: url_service_celery_worker
+    command: celery -A Config worker -l info
+    depends_on:
+      url-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    # Needs gateway-net too (no alias — nothing calls this container by
+    # name): this is what actually runs record_click_task/
+    # delete_click_events_task, which call analytics-service at
+    # ANALYTICS_SERVICE_URL (http://analytics:8000, resolvable only here).
+    networks:
+      default:
+      gateway-net:
+
+  celery-beat:
+    build: .
+    container_name: url_service_celery_beat
+    command: celery -A Config beat -l info
+    depends_on:
+      url-db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  url_postgres_data:
+  redis_data:
+
+networks:
+  gateway-net:
+    external: true
+    name: url_shortener_gateway
