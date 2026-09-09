@@ -1,0 +1,31 @@
+services:
+  preview-service:
+    build: .
+    container_name: preview_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    # No environment: block here — the Dockerfile's `COPY . .` bakes this
+    # service's own .env straight into the image, and Django reads it
+    # directly at startup (Config/settings.py). No database/Redis/Celery
+    # container to depend on — this service is genuinely stateless (SQLite,
+    # migrated fresh in the container's own ephemeral filesystem on every
+    # start, only for django.contrib.admin/auth/sessions — nothing worth
+    # persisting across restarts).
+    ports:
+      - "8004:8000"
+    # "gateway-net" is the network shared with the other services and the
+    # gateway (see gateway/docker-compose.yml), under the alias the
+    # gateway's server.conf expects. It's external, so it must exist before
+    # this comes up — a one-time `docker network create url_shortener_gateway`,
+    # same as copying .env.example once. This service is still fully usable
+    # standalone (Swagger, direct :8004 calls) whether or not the gateway
+    # container itself is ever started.
+    networks:
+      default:
+      gateway-net:
+        aliases:
+          - preview
+
+networks:
+  gateway-net:
+    external: true
+    name: url_shortener_gateway
