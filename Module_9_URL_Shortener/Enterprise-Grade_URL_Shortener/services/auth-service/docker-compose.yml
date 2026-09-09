@@ -1,0 +1,50 @@
+services:
+  auth-db:
+    image: postgres:16-alpine
+    container_name: auth_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # $$ so the container's own shell expands these (from the environment
+      # above), not the host running `docker compose`.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build: .
+    container_name: auth_service
+    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    ports:
+      - "8001:8000"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    # "default" keeps this reachable from auth-db above; "gateway-net" is the
+    # network shared with the other services and the gateway (see
+    # gateway/docker-compose.yml), under the alias the gateway's server.conf
+    # expects. It's external, so it must exist before this comes up — a
+    # one-time `docker network create url_shortener_gateway`, same as copying
+    # .env.example once. This service is still fully usable standalone
+    # (Swagger, admin, direct :8001 calls) whether or not the gateway
+    # container itself is ever started.
+    networks:
+      default:
+      gateway-net:
+        aliases:
+          - auth
+
+volumes:
+  auth_postgres_data:
+
+networks:
+  gateway-net:
+    external: true
+    name: url_shortener_gateway
