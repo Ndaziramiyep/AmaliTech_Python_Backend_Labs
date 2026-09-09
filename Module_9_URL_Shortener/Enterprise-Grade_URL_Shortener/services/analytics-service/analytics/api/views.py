@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from analytics.api.permissions import IsInternalService, IsPremiumOrAdmin
+from analytics.api.permissions import INTERNAL_KEY_HEADER, IsInternalService, IsPremiumOrAdmin
 from analytics.api.serializers import (
     ClickEventSerializer,
     DetailedAnalyticsSerializer,
@@ -24,6 +24,7 @@ class RecordClickView(APIView):
 
     @extend_schema(
         request=ClickEventSerializer,
+        parameters=[INTERNAL_KEY_HEADER],
         responses={201: None},
         description=(
             "Internal endpoint used by url-service to report that a short "
@@ -40,6 +41,7 @@ class RecordClickView(APIView):
         return Response(status=status.HTTP_201_CREATED)
 
     @extend_schema(
+        parameters=[INTERNAL_KEY_HEADER],
         responses={204: None},
         description=(
             "Internal endpoint used by url-service to cascade-delete click "
