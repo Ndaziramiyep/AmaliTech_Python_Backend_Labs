@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from preview.fetcher import PreviewFetchError, fetch_preview
-from preview.permissions import IsInternalService
+from preview.permissions import INTERNAL_KEY_HEADER, IsInternalService
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ class PreviewView(APIView):
 
     @extend_schema(
         request=PreviewRequestSerializer,
+        parameters=[INTERNAL_KEY_HEADER],
         responses={200: PreviewResponseSerializer, 400: None, 502: None},
         description=(
             "Fetches the destination page at `url` and returns its title, "
