@@ -21,7 +21,7 @@ services:
   auth-service:
     build: .
     container_name: auth_service
-    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    command: sh -c "python manage.py migrate && gunicorn -c gunicorn.conf.py Config.wsgi:application"
     ports:
       - "8001:8000"
     depends_on:
