@@ -163,6 +163,50 @@ sequenceDiagram
     end
 ```
 
+### 3. Redirect + Click Tracking
+
+The hot path (cache lookup → 302) never waits on analytics-service or the
+geolocation lookup — both run on a background daemon thread after the
+redirect has already been sent.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant U as url-service
+    participant R as Redis
+    participant DB as url_db
+    participant T as Background Thread
+    participant Geo as ip-api.com
+    participant AS as analytics-service
+    participant CW as Celery Worker (analytics)
+    participant ADB as analytics_db
+
+    C->>U: GET /{short_code}/
+    U->>R: GET short_code
+    alt cache hit
+        R-->>U: cached Url
+    else cache miss
+        U->>DB: SELECT Url WHERE short_url = ? OR custom_alias = ?
+        DB-->>U: Url row (404 if missing / inactive / expired)
+        U->>R: SET short_code → Url
+    end
+    U->>DB: UPDATE click_count = click_count + 1 (atomic)
+    U-->>C: 302 Location: original_url
+
+    rect rgba(52, 168, 83, 0.08)
+    Note right of U: off the request path — spawned as a daemon thread
+    U->>T: spawn(track_click)
+    T->>Geo: GET geolocation for request IP
+    Geo-->>T: {city, country} (or null for private/local IPs)
+    T->>AS: POST /api/v1/events/click/ (X-Internal-Key) {short_code, owner_id, ip, city, country, ...}
+    AS->>AS: verify X-Internal-Key
+    AS->>CW: track_click_task.delay(...)
+    AS-->>T: 201 Created (enqueued)
+    CW->>ADB: INSERT ClickEvent
+    end
+```
+
 ## 🚀 Features
 
 - **JWT Authentication** (auth-service): register/login with email + password; access & refresh tokens carry custom `email`, `is_staff`, and `tier` claims
