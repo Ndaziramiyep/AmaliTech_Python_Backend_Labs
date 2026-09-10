@@ -10,6 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.api.permissions import IsInternalGateway
 from accounts.api.serializers import LoginSerializer, RegisterSerializer
+from accounts.profiling import profile_function, profile_lines
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class TokenResponseSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
 
+@profile_lines
 def _tokens_for_user(user):
     """Builds a JWT access/refresh token pair embedding the user's email, is_staff, and tier claims."""
     refresh = RefreshToken.for_user(user)
