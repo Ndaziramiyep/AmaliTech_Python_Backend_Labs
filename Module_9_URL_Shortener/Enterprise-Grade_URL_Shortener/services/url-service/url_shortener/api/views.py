@@ -23,6 +23,7 @@ from url_shortener.caching import cache_key, cache_url, identifiers_for, invalid
 from url_shortener.clients import analytics_client
 from url_shortener.models import Tag, Url
 from url_shortener.profiling import profile_function, profile_lines
+from url_shortener.tasks import fetch_url_preview_task
 
 SHORT_CODE_LENGTH = 6
 SHORT_CODE_ALPHABET = string.ascii_letters + string.digits
@@ -136,11 +137,16 @@ class UrlListCreateView(APIView):
             "10 active URLs. Rate limited per tier (Free: 100/day, Premium/Admin: 1000/day). "
             "Omit expires_at (or send it as null) for a link that never expires — "
             "don't use whatever value Swagger's 'Try it out' pre-fills there, it's "
-            "just a schema placeholder and is stale by the time you submit."
+            "just a schema placeholder and is stale by the time you submit. "
+            "title/description/favicon are auto-fetched from the destination page "
+            "in the background (via url-preview) for any of those you don't "
+            "supply yourself — they may be null in this response and populate a "
+            "moment later; a slow or unreachable destination site never delays "
+            "this response."
         ),
     )
     def post(self, request):
-        """Validates the submitted URL, enforces the Free-tier active-URL cap, generates a short code, and persists it."""
+        """Validates the submitted URL, enforces the Free-tier active-URL cap, generates a short code, and persists it — queuing an async title/description/favicon fetch from the destination page."""
         if not request.user.is_staff and request.user.tier != 'Premium':
             active_count = Url.objects.filter(owner_id=request.user.id, is_active=True).count()
             if active_count >= FREE_TIER_ACTIVE_URL_LIMIT:
@@ -170,6 +176,7 @@ class UrlListCreateView(APIView):
         if data.get('tags'):
             url_obj.tags.set(_get_or_create_tags(data['tags']))
         cache_url(url_obj)
+        fetch_url_preview_task.delay(url_obj.id)
 
         return Response(UrlSerializer(url_obj).data, status=status.HTTP_201_CREATED)
 
