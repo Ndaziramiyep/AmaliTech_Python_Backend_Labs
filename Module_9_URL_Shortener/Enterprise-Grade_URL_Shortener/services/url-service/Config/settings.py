@@ -187,8 +187,12 @@ CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=TESTING)
 # or delete, eager or not.
 CELERY_TASK_EAGER_PROPAGATES = False
 
-# Logging Configuration — structured JSON to stdout; 500s (django.request)
-# and security warnings (django.security) are always captured.
+# Logging Configuration — structured JSON to stdout and to logs/logs.json;
+# 500s (django.request) and security warnings (django.security) are always captured.
+# FileHandler doesn't create missing parent dirs, and logs/ is gitignored, so
+# a fresh checkout or image build has to have it created here first.
+(BASE_DIR / "logs").mkdir(exist_ok=True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -200,19 +204,24 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "json",
         },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": BASE_DIR / "logs" / "logs.json",
+            "formatter": "json",
+        },
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "file"],
         "level": "INFO",
     },
     "loggers": {
         "django.request": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "ERROR",
             "propagate": False,
         },
         "django.security": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "WARNING",
             "propagate": False,
         },
