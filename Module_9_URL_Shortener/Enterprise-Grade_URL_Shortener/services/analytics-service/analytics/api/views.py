@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from analytics.api.permissions import INTERNAL_KEY_HEADER, IsInternalService, IsPremiumOrAdmin
+from analytics.api.permissions import IsInternalService, IsPremiumOrAdmin
 from analytics.api.serializers import (
     ClickEventSerializer,
     DetailedAnalyticsSerializer,
@@ -14,6 +14,7 @@ from analytics.api.serializers import (
     UserClickSummaryItemSerializer,
 )
 from analytics.models import ClickEvent
+from analytics.profiling import profile_function, profile_lines
 from analytics.tasks import track_click_task
 
 
@@ -24,7 +25,6 @@ class RecordClickView(APIView):
 
     @extend_schema(
         request=ClickEventSerializer,
-        parameters=[INTERNAL_KEY_HEADER],
         responses={201: None},
         description=(
             "Internal endpoint used by url-service to report that a short "
@@ -41,7 +41,6 @@ class RecordClickView(APIView):
         return Response(status=status.HTTP_201_CREATED)
 
     @extend_schema(
-        parameters=[INTERNAL_KEY_HEADER],
         responses={204: None},
         description=(
             "Internal endpoint used by url-service to cascade-delete click "
@@ -70,6 +69,7 @@ class UrlClickStatsView(APIView):
             "you own. Returns zero/null if that code has no recorded clicks yet."
         ),
     )
+    @profile_lines
     def get(self, request, short_code):
         """Aggregate click count and last-clicked timestamp for the given short code."""
         events = ClickEvent.objects.filter(short_code=short_code, owner_id=request.user.id)
@@ -116,6 +116,7 @@ class DetailedAnalyticsView(APIView):
             "are null for clicks whose IP couldn't be geolocated."
         ),
     )
+    @profile_function
     def get(self, request, short_code):
         """Aggregates this short code's click events into a daily time series and a city/country breakdown."""
         owner_filter = {} if request.user.is_staff else {"owner_id": request.user.id}

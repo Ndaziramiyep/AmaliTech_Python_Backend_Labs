@@ -1,21 +1,9 @@
 import logging
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiParameter
 from rest_framework.permissions import BasePermission
 
 logger = logging.getLogger(__name__)
-
-# Documents the header IsInternalService actually checks, so Swagger UI's
-# "Try it out" renders an input field for it instead of leaving callers to
-# guess from the description text alone (and get a bare 403 back).
-INTERNAL_KEY_HEADER = OpenApiParameter(
-    name="X-Internal-Key",
-    type=str,
-    location=OpenApiParameter.HEADER,
-    required=True,
-    description="Shared secret proving this call came from url-service, not the public internet.",
-)
 
 
 class IsInternalService(BasePermission):
