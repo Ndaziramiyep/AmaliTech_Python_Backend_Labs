@@ -71,6 +71,9 @@ docker-compose.override.yml
 tmp/
 .docker/
 
+# Application logs
+logs/
+
 # Celery Beat (local runs of `celery -A Config beat`)
 celerybeat-schedule*
 
