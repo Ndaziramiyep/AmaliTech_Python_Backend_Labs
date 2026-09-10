@@ -34,6 +34,7 @@ together, by design.
 - [API Endpoints](#-api-endpoints)
 - [Troubleshooting](#-troubleshooting)
 - [Development Notes](#-development-notes)
+- [Performance Tuning](#-performance-tuning)
 - [Production Deployment](#-production-deployment)
 
 ## 🧩 Architecture
@@ -718,6 +719,73 @@ python manage.py migrate
 - **Health checks are real, not a static ping**: `GET /health/` on every service actually queries the database (`SELECT 1`); url-service and analytics-service also ping Redis. Returns 503 (not 200) the moment any check fails — suitable for a container orchestrator's liveness/readiness probe.
 - **RESTful Design**: proper HTTP methods and status codes, one Swagger UI per service.
 
+## ⚡ Performance Tuning
+
+### Gunicorn
+
+Every service has its own `gunicorn.conf.py` (next to `manage.py`), used by
+both its `Dockerfile` and `docker-compose.yml` (`gunicorn -c gunicorn.conf.py
+Config.wsgi:application`). It reads its knobs from that service's own
+`.env` directly — gunicorn parses this file itself, before it ever imports
+`Config.wsgi`/`settings.py`, so `.env` is loaded here explicitly with
+`django-environ` rather than relying on Django to have done it first. Every
+knob below is optional; all have sensible defaults if left unset.
+
+| Variable                       | Default             | Effect                                                                                    |
+|---------------------------------|----------------------|--------------------------------------------------------------------------------------------|
+| `GUNICORN_WORKERS`               | `(2 x CPU cores) + 1` | Worker process count — the standard starting point; pin it explicitly on a CPU-quota'd container rather than trusting the host's full core count |
+| `GUNICORN_WORKER_CLASS`          | `gthread`            | `gthread` lets each worker serve several requests concurrently on threads — matters for url-service specifically, since a redirect spawns a background thread for click reporting |
+| `GUNICORN_THREADS`               | `4`                  | Threads per worker (only used by `gthread`)                                               |
+| `GUNICORN_TIMEOUT`               | `30`                 | Seconds before a silent worker is killed and restarted                                    |
+| `GUNICORN_GRACEFUL_TIMEOUT`      | `30`                 | Seconds a worker gets to finish in-flight requests during a graceful restart              |
+| `GUNICORN_KEEPALIVE`             | `5`                  | Seconds to hold a keep-alive connection open waiting for the next request                 |
+| `GUNICORN_MAX_REQUESTS`          | `1000`               | Requests a worker handles before it's recycled — bounds slow memory growth                |
+| `GUNICORN_MAX_REQUESTS_JITTER`   | `100`                | Random jitter on the above, so workers don't all recycle at the same instant              |
+| `GUNICORN_PRELOAD_APP`           | `true`               | Loads the app once in the master before forking workers, sharing code pages between them; `gunicorn.conf.py`'s `post_fork` hook closes the inherited DB connection so each worker opens its own |
+| `GUNICORN_LOG_LEVEL`             | `info`               | Gunicorn's own log level (separate from Django's `LOGGING`)                                |
+
+`bind` itself is **not** configurable this way — it's hardcoded to
+`0.0.0.0:8000` in every service's `gunicorn.conf.py`, since
+`docker-compose.yml` maps the host port (`8001`/`8002`/`8003`) to container
+port `8000`; that's a different thing from `PORT` in `.env`, which only
+controls what `manage.py runserver` binds to locally, outside Docker.
+
+Gunicorn's own access log (`accesslog = "-"`, i.e. stdout) uses a format
+that includes `%(D)s` — the request time in microseconds — so per-request
+latency is visible in plain container logs without turning on profiling at
+all.
+
+### Request Profiling
+
+Every service ships a `ProfilingMiddleware`
+(`accounts/profiling.py`, `url_shortener/profiling.py`,
+`analytics/profiling.py`) built on the standard library's `cProfile` — no
+extra dependency. It's a double opt-in, off unless both are true:
+
+1. `ENABLE_PROFILING=True` in that service's `.env` (`settings.PROFILING_ENABLED`)
+2. The request itself carries `?profile=1`
+
+```bash
+# Inline: top 30 stack frames by cumulative time, human-readable
+curl "http://localhost:8002/api/v1/urls/?profile=1&format=text"
+
+# File dump: full stats written to logs/profiles/, for offline inspection
+curl "http://localhost:8002/api/v1/urls/?profile=1"
+pip install snakeviz
+snakeviz logs/profiles/api_v1_urls-<timestamp>.prof
+```
+
+`logs/profiles/` sits under the same gitignored `logs/` directory as
+`logs.json` (see [Structured Logging](#-development-notes)) — it's runtime
+output, not source, and the middleware creates it on demand.
+
+**Never leave `ENABLE_PROFILING=True` on in a publicly reachable
+production environment**: a profiled request runs measurably slower (every
+function call is intercepted), and letting untrusted clients trigger one on
+demand is a cheap way to degrade the service. Turn it on only where traffic
+is already trusted/internal, and only for as long as you're actively
+investigating something.
+
 ## 🚢 Production Deployment
 
 For production deployment:
@@ -727,8 +795,9 @@ For production deployment:
    - Generate strong, random values for `JWT_SECRET_KEY` and `SECRET_KEY` in every service, and `INTERNAL_API_KEY` in url-service/analytics-service — keep the shared ones (`JWT_SECRET_KEY` everywhere, `INTERNAL_API_KEY` on url-service + analytics-service) identical across the services that share them
    - Configure `ALLOWED_HOSTS` per environment
    - Set `CORS_ALLOW_ALL_ORIGINS=False` and list real origins in `CORS_ALLOWED_ORIGINS`
+   - Leave `ENABLE_PROFILING` unset (or `False`) unless you're actively debugging — see [Performance Tuning](#-performance-tuning)
 
-2. Each service is served via Gunicorn behind its own reverse-proxy route (or an API gateway, if you add one later)
+2. Each service is served via Gunicorn behind its own reverse-proxy route (or an API gateway, if you add one later) — tune `GUNICORN_WORKERS`/`GUNICORN_THREADS`/etc. in that service's `.env` for the target hardware, see [Performance Tuning](#-performance-tuning)
 
 3. url-service and analytics-service each need their Celery worker running continuously (`celery -A Config worker -l info`) for click tracking / archiving to actually happen — `docker-compose.yml`'s `celery-worker` service covers this; url-service also needs `celery-beat` (`celery -A Config beat -l info`) for the nightly archive job to fire at all
 
