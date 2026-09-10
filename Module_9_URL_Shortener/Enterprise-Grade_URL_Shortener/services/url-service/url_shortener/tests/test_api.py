@@ -35,7 +35,14 @@ class UrlListCreateAPITest(APITestCase):
     """Tests the list/create endpoint's authentication, validation, pagination, tag search, and per-owner scoping."""
 
     def setUp(self):
-        """Mint an access token for a test user before each test.
+        """Mint an access token for a test user before each test, and stub out the url-preview fetch.
+
+        Creating a Url queues fetch_url_preview_task.delay(...), which runs
+        synchronously under CELERY_TASK_ALWAYS_EAGER (test mode) — without
+        this stub, every creation test would attempt a real network call to
+        url-preview. preview_client.fetch_preview never raises on its own
+        (it logs and returns None), so this is purely to keep the test suite
+        offline and fast, not to work around an exception.
 
         Also clears the shared cache — it isn't rolled back between tests
         like the DB is, and TieredUserRateThrottle's request history lives
@@ -44,6 +51,9 @@ class UrlListCreateAPITest(APITestCase):
         """
         cache.clear()
         self.access_token = make_access_token(user_id=1, email="alice@example.com")
+        patcher = patch('url_shortener.clients.preview_client.fetch_preview', return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def authenticate(self, token=None):
         """Attach a Bearer credential (the test user's by default) on the client."""

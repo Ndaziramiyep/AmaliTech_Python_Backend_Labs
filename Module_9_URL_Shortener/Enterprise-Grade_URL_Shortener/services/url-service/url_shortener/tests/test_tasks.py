@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import TestCase
@@ -6,7 +7,7 @@ from django.utils import timezone
 
 from url_shortener.caching import cache_key, cache_url
 from url_shortener.models import Url
-from url_shortener.tasks import archive_expired_urls
+from url_shortener.tasks import archive_expired_urls, fetch_url_preview_task
 
 
 class ArchiveExpiredUrlsTaskTest(TestCase):
@@ -74,3 +75,60 @@ class ArchiveExpiredUrlsTaskTest(TestCase):
         self.assertEqual(count, 0)
         url_obj.refresh_from_db()
         self.assertIsNone(url_obj.archived_at)
+
+
+class FetchUrlPreviewTaskTest(TestCase):
+    """Tests the async task that fills in title/description/favicon from url-preview after a Url is created."""
+
+    def setUp(self):
+        self.url_obj = Url.objects.create(
+            original_url="https://www.example.com", short_url="prev001",
+            owner_id=1, owner_email="alice@example.com",
+        )
+
+    @patch('url_shortener.tasks.preview_client.fetch_preview')
+    def test_fills_in_blank_fields_from_the_preview(self, mock_fetch_preview):
+        mock_fetch_preview.return_value = {
+            "title": "Example Domain", "description": "An example page", "favicon": "https://www.example.com/favicon.ico",
+        }
+
+        fetch_url_preview_task(self.url_obj.id)
+
+        self.url_obj.refresh_from_db()
+        self.assertEqual(self.url_obj.title, "Example Domain")
+        self.assertEqual(self.url_obj.description, "An example page")
+        self.assertEqual(self.url_obj.favicon, "https://www.example.com/favicon.ico")
+
+    @patch('url_shortener.tasks.preview_client.fetch_preview')
+    def test_never_overwrites_an_owner_supplied_value(self, mock_fetch_preview):
+        self.url_obj.title = "My own title"
+        self.url_obj.save()
+        mock_fetch_preview.return_value = {
+            "title": "Example Domain", "description": "An example page", "favicon": "https://www.example.com/favicon.ico",
+        }
+
+        fetch_url_preview_task(self.url_obj.id)
+
+        self.url_obj.refresh_from_db()
+        self.assertEqual(self.url_obj.title, "My own title")
+        self.assertEqual(self.url_obj.description, "An example page")
+
+    @patch('url_shortener.tasks.preview_client.fetch_preview')
+    def test_does_nothing_when_url_preview_returns_none(self, mock_fetch_preview):
+        mock_fetch_preview.return_value = None
+
+        fetch_url_preview_task(self.url_obj.id)
+
+        self.url_obj.refresh_from_db()
+        self.assertIsNone(self.url_obj.title)
+        self.assertIsNone(self.url_obj.description)
+        self.assertIsNone(self.url_obj.favicon)
+
+    @patch('url_shortener.tasks.preview_client.fetch_preview')
+    def test_silently_does_nothing_if_the_url_was_since_deleted(self, mock_fetch_preview):
+        deleted_id = self.url_obj.id
+        self.url_obj.delete()
+
+        fetch_url_preview_task(deleted_id)  # must not raise
+
+        mock_fetch_preview.assert_not_called()
