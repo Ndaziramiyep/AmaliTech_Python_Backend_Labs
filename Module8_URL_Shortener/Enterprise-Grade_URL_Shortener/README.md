@@ -876,4 +876,4 @@ Created as Lab 1: URL Shortener Microservice — split into auth/url/analytics m
 
 ---
 
-**Happy URL Shortening! 🎉**
+

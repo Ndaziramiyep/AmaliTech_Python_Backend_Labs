@@ -4,28 +4,6 @@ This document measures the actual impact of this platform's performance
 features — database indexing, Redis caching, code-level profiling, and
 Gunicorn process tuning — with real before/after numbers, not estimates.
 
-**Methodology**: every number below comes from a script actually run
-against this project's own dev containers (Postgres 16 / Redis 7, the same
-ones `docker-compose.yml` starts), on this development machine (12 logical
-cores, Windows host, Python 3.14, `redis-py` 5.0.1). All benchmark data was
-deleted and all schema changes reverted immediately after each run — no
-seeded rows or dropped indexes were left behind. Absolute millisecond
-values are specific to this machine; the **relative speedups** (Nx faster)
-are the number that generalizes. Exact scripts are in the
-[Reproducing These Numbers](#reproducing-these-numbers) section at the
-bottom so anyone can re-run them.
-
-## Table of Contents
-
-- [1. Database Indexing](#1-database-indexing)
-- [2. Redis Caching](#2-redis-caching)
-- [3. Code Profiling](#3-code-profiling)
-- [4. Gunicorn Process Tuning](#4-gunicorn-process-tuning)
-- [Summary](#summary)
-- [Reproducing These Numbers](#reproducing-these-numbers)
-
----
-
 ## 1. Database Indexing
 
 **Where**: analytics-service's `ClickEvent` model (`short_code`,
@@ -179,46 +157,6 @@ un-configured baseline.)
 | Concurrent requests before queuing | 1 | 100 |
 | Worker recycling | Never (a memory leak runs forever) | Every ~1,000 requests (`GUNICORN_MAX_REQUESTS`) |
 
-## Summary
-
-| Feature | Metric | Before | After | Improvement |
-|---|---|---|---|---|
-| DB indexing (analytics) | Avg query time | 16.435 ms | 2.827 ms | **5.8x faster** |
-| Redis caching (url-service) | Avg lookup time | 2.092 ms | 0.360 ms | **5.8x faster** |
-| Profiling | Time to locate a bottleneck | Guesswork | One log line, exact % | Qualitative |
-| Gunicorn tuning | Concurrent requests/container | 1 | 100 (this machine) | **100x capacity** (calculated, not load-tested — see note above) |
-
-## Reproducing These Numbers
-
-Both scripts live in [`benchmarks/`](benchmarks/) at the project root —
-deliberately outside any service's own codebase, since they seed data and
-drop indexes and have no business shipping in the app itself. Both are
-self-contained and clean up everything they touch, safe to re-run against
-a local dev environment (needs that service's own Postgres/Redis running,
-e.g. via `docker compose up -d <db-service> redis` from within it — see the
-README's [Setup Instructions](README.md#-setup-instructions)):
-
-```bash
-# 1. Indexing benchmark (analytics-service) — seeds 200k rows, drops/restores
-#    the real indexes, deletes all seeded rows when done.
-cd services/analytics-service
-POSTGRES_HOST=localhost POSTGRES_PORT=5435 python ../../benchmarks/bench_index.py
-
-# 2. Cache benchmark (url-service) — creates/deletes one benchmark Url row
-#    and its cache entry.
-cd services/url-service
-POSTGRES_HOST=localhost POSTGRES_PORT=5436 REDIS_URL=redis://127.0.0.1:6380/1 python ../../benchmarks/bench_cache.py
-```
-
-**Expect the exact multiplier to vary run-to-run** (background load on the
-machine, Postgres's query planner occasionally choosing a parallel seq scan
-instead of a plain one for the "before" case, etc.) — reruns of these two
-scripts while writing this document landed anywhere from 4.9x–6.9x. The
-conclusion doesn't change: both consistently land in the same
-mid-single-digit-multiple range, never close to 1x.
-
-For a **real** (not calculated) Gunicorn concurrency number once Docker is
-available:
 
 ```bash
 cd services/url-service && docker compose up --build -d
