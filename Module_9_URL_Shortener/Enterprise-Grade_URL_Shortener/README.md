@@ -18,10 +18,14 @@ builds and runs all of them together, plus the gateway.
 | **auth-service**      | `8001`&#42; | `auth_db` (Users)                  | Register, log in, issue/refresh JWTs                                                    |
 | **url-service**       | `8002`&#42; | `url_db` + Redis + Celery worker/beat | Create short URLs, resolve/redirect, report click events, nightly-archive expired URLs  |
 | **analytics-service** | `8003`&#42; | `analytics_db` + Redis + Celery worker | Record click events (write-behind via Celery), serve click stats                    |
+| **url-preview**       | `8004`&#42;&#42; | `url_preview_db` + Redis | Fetches title/description/favicon for a destination URL, resiliently (retry/backoff + per-domain circuit breaker) |
 
 &#42; Each service's own host port is bound to `127.0.0.1` only, for local
 debugging — real client traffic always goes through the gateway on `:80`.
-See [API Gateway](#-api-gateway) below.
+See [API Gateway](#-api-gateway) below. &#42;&#42; url-preview additionally
+has **no** client-facing route at all, not even through the gateway — it's
+called only by url-service, internally, right after a URL is created; see
+[`services/url-preview/README.md`](services/url-preview/README.md).
 
 ## 📑 Table of Contents
 
@@ -671,6 +675,18 @@ Enterprise-Grade_URL_Shortener/
 │       ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
 │       ├── Dockerfile              # no docker-compose.yml here — see services/docker-compose.yml
 │       └── requirements.txt, manage.py, .env.example
+│   └── url-preview/                # internal-only: no client-facing route, not even through the gateway
+│       ├── config/                 # settings (lowercase "config", not "Config"), urls, wsgi, asgi, json_logging.py
+│       ├── apps/preview/
+│       │   ├── redis_client.py    # lazy singleton redis-py client (result cache + circuit breaker state)
+│       │   └── api/
+│       │       ├── views.py       # PreviewView — POST /api/v1/internal/preview/
+│       │       ├── permissions.py # IsInternalService — X-Internal-Token
+│       │       ├── health.py      # GET /health/ — database + Redis connectivity
+│       │       └── services/      # preview_service.py (orchestrator + SSRF guard), fetcher.py, retry.py, circuit_breaker.py
+│       ├── gunicorn.conf.py
+│       ├── Dockerfile              # no docker-compose.yml here — see services/docker-compose.yml
+│       └── requirements.txt, requirements-dev.txt, pytest.ini, manage.py, .env.example
 └── README.md
 ```
 
