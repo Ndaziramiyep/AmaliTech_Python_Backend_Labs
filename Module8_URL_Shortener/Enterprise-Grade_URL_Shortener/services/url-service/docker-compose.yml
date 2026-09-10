@@ -28,7 +28,7 @@ services:
   url-service:
     build: .
     container_name: url_service
-    command: sh -c "python manage.py migrate && gunicorn Config.wsgi:application --bind 0.0.0.0:8000"
+    command: sh -c "python manage.py migrate && gunicorn -c gunicorn.conf.py Config.wsgi:application"
     # No environment: block here — the Dockerfile's `COPY . .` bakes this
     # service's own .env straight into the image, and Django reads it
     # directly at startup (Config/settings.py). Docker itself needs nothing
