@@ -104,7 +104,7 @@ analytics-service never delays a redirect.
 - **URL Shortening & Redirect** (url-service): short codes (or a Premium custom alias) backed by PostgreSQL, cached in Redis for fast lookups (cache-first, DB on a miss, invalidated on every update); supports tags, expiry, activation toggling, and per-link metadata
 - **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event and persisted write-behind by a Celery worker (never written inline in the request); owners can query per-link and per-account click stats
 - **Nightly Cleanup** (url-service, Celery Beat): a scheduled job archives every URL past its `expires_at` (`is_archived=True`, deactivated, evicted from cache) once a day
-- **Structured Logging**: every service logs JSON lines to stdout, with 500-level errors (`django.request`) and security warnings (`django.security`, plus app-level warnings like a failed login attempt, a rejected internal-key, or an unauthorized write attempt) always captured
+- **Structured Logging**: every service logs JSON lines to both stdout and its own `logs/logs.json`, with 500-level errors (`django.request`) and security warnings (`django.security`, plus app-level warnings like a failed login attempt, a rejected internal-key, or an unauthorized write attempt) always captured
 - **Health Checks**: `GET /health/` on every service verifies database connectivity (url-service and analytics-service also check Redis), returning 503 if anything's down
 - **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
 - **API Documentation**: each service serves its own interactive Swagger UI
@@ -117,7 +117,7 @@ analytics-service never delays a redirect.
 - **Database**: PostgreSQL — a separate container per service
 - **Cache**: Redis (`django-redis`), used by url-service for URL lookups
 - **Background Tasks**: Celery, in url-service (nightly Celery Beat archive job) and analytics-service (write-behind click persistence) — each with its own Redis broker
-- **Logging**: structured JSON to stdout (each service has its own `logging_utils.JSONFormatter`)
+- **Logging**: structured JSON to stdout and to `logs/logs.json` (each service has its own `logging_utils.JSONFormatter`)
 - **API Documentation**: drf-spectacular (OpenAPI/Swagger) per service
 - **Server**: Gunicorn (production)
 - **Containerization**: Docker & Docker Compose
@@ -714,7 +714,7 @@ python manage.py migrate
 - **Free geolocation, no fabricated data**: `ip-api.com` (no API key) is queried for city/country on each click; it correctly can't resolve private/local IPs (e.g. `127.0.0.1` in local dev), so those fields stay `null` rather than showing made-up locations.
 - **Role-based access via a JWT claim, not a lookup**: url-service enforces owner-or-admin checks (`url_shortener/api/permissions.py`'s `IsOwnerOrReadOnly`) purely from the `is_staff` claim already on the token — same stateless approach as authentication itself, no call back to auth-service to check a role.
 - **Tiered rate limiting via the same claim approach**: `TieredUserRateThrottle` (`url_shortener/api/throttling.py`) picks a request quota from the token's `tier` claim alone, with no lookup either.
-- **Structured JSON logging**: every service logs JSON lines to stdout (each has its own `logging_utils.JSONFormatter`), with `django.request` (500s) and `django.security` (security warnings) always routed there, plus app-level `logger.warning(...)` calls at points that matter for security monitoring — a failed login attempt (`accounts/api/views.py`), a rejected `X-Internal-Key` (`analytics/api/permissions.py`), an unauthorized write attempt on someone else's URL (`url_shortener/api/permissions.py`).
+- **Structured JSON logging**: every service logs JSON lines to both stdout and its own `logs/logs.json` (each has its own `logging_utils.JSONFormatter`), with `django.request` (500s) and `django.security` (security warnings) always routed to both, plus app-level `logger.warning(...)` calls at points that matter for security monitoring — a failed login attempt (`accounts/api/views.py`), a rejected `X-Internal-Key` (`analytics/api/permissions.py`), an unauthorized write attempt on someone else's URL (`url_shortener/api/permissions.py`). `logs/` is gitignored on purpose (it's runtime output, not source) — each service's own `Config/settings.py` creates the directory on startup if it's missing, so a fresh checkout or Docker build never crashes for lacking it.
 - **Health checks are real, not a static ping**: `GET /health/` on every service actually queries the database (`SELECT 1`); url-service and analytics-service also ping Redis. Returns 503 (not 200) the moment any check fails — suitable for a container orchestrator's liveness/readiness probe.
 - **RESTful Design**: proper HTTP methods and status codes, one Swagger UI per service.
 
