@@ -16,4 +16,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "Config.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "Config.wsgi:application"]
