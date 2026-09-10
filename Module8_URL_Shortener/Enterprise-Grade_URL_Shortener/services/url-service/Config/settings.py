@@ -12,6 +12,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")
 
+# .env is baked into the Docker image and points at Compose service names
+# (url-db, redis, ...). .env.local is git/docker-ignored and, when present,
+# overlays host-reachable values so `manage.py runserver` works outside Docker.
+local_env_file = BASE_DIR / ".env.local"
+if local_env_file.exists():
+    environ.Env.read_env(local_env_file, overwrite=True)
+
 # True when running under `manage.py test` — used to run Celery tasks
 # synchronously (no broker needed) instead of enqueueing them for real.
 TESTING = "test" in sys.argv
