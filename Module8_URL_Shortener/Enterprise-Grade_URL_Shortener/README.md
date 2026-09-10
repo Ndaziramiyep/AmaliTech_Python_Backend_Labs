@@ -21,7 +21,6 @@ together, by design.
 ## 📑 Table of Contents
 
 - [Architecture](#-architecture)
-- [Sequence Diagrams](#-sequence-diagrams)
 - [Features](#-features)
 - [Technology Stack](#️-technology-stack)
 - [Prerequisites](#-prerequisites)
@@ -39,240 +38,47 @@ together, by design.
 
 ## 🧩 Architecture
 
-Three independently deployable services, each with its own database and its
-own Redis/Celery where it needs one. There is no API gateway and no shared
-Users table — url-service and analytics-service verify JWTs themselves
-against a secret shared with auth-service at deploy time, never by calling
-back to it at request time.
-
-```mermaid
-flowchart TB
-    Client(["Client<br/>browser / curl / Swagger UI"])
-
-    subgraph AuthService["auth-service :8001"]
-        direction TB
-        AuthAPI["Django REST API<br/>register · login · refresh"]
-        AuthDB[("auth_db<br/>PostgreSQL")]
-        AuthAPI --> AuthDB
-    end
-
-    subgraph UrlService["url-service :8002"]
-        direction TB
-        UrlAPI["Django REST API<br/>create · list · update · delete · redirect"]
-        UrlDB[("url_db<br/>PostgreSQL")]
-        UrlRedis[("Redis<br/>cache + Celery broker")]
-        UrlBeat["Celery Beat<br/>nightly archive_expired_urls"]
-        UrlWorker["Celery Worker"]
-        UrlAPI -->|"cache-first read<br/>write-through on update"| UrlRedis
-        UrlAPI --> UrlDB
-        UrlBeat --> UrlWorker
-        UrlWorker --> UrlDB
-        UrlWorker --> UrlRedis
-    end
-
-    subgraph AnalyticsService["analytics-service :8003"]
-        direction TB
-        AnalyticsAPI["Django REST API<br/>click stats · detailed analytics"]
-        AnalyticsDB[("analytics_db<br/>PostgreSQL")]
-        AnalyticsRedis[("Redis<br/>Celery broker")]
-        AnalyticsWorker["Celery Worker<br/>write-behind persistence"]
-        AnalyticsAPI --> AnalyticsRedis
-        AnalyticsAPI -->|"read"| AnalyticsDB
-        AnalyticsWorker --> AnalyticsRedis
-        AnalyticsWorker -->|"INSERT / DELETE ClickEvent"| AnalyticsDB
-    end
-
-    Client -- "① POST register / login" --> AuthAPI
-    AuthAPI -. "JWT access + refresh<br/>(user_id, email, is_staff, tier)" .-> Client
-
-    Client -- "② Bearer JWT: create / list / update / delete" --> UrlAPI
-    Client -- "③ GET /{short_code}/  (redirect)" --> UrlAPI
-
-    UrlAPI -. "④ click event, fire-and-forget<br/>background thread · X-Internal-Key" .-> AnalyticsAPI
-    UrlAPI -. "cascade-delete click history<br/>background thread · X-Internal-Key" .-> AnalyticsAPI
-
-    Client -- "⑤ Bearer JWT: click stats / analytics" --> AnalyticsAPI
-
-    AuthAPI -.->|"shared JWT_SECRET_KEY<br/>(verified offline, no runtime call)"| UrlAPI
-    AuthAPI -.->|"shared JWT_SECRET_KEY<br/>(verified offline, no runtime call)"| AnalyticsAPI
-
-    style Client fill:#e8f0fe,stroke:#4285f4,color:#1a1a1a
-    style AuthService fill:#fff7e6,stroke:#d9a441
-    style UrlService fill:#e6f4ea,stroke:#34a853
-    style AnalyticsService fill:#fce8e6,stroke:#ea4335
-```
-
-**Legend**: solid arrows are synchronous HTTP calls in the request/response
-path; dashed arrows are either the JWT payload/claims returned to the client,
-or a fire-and-forget call made from a background daemon thread (never blocks
-the caller). Only url-service → analytics-service crosses a service boundary
-at runtime — auth-service is never called by the other two after token
-issuance.
-
-## 🔄 Sequence Diagrams
-
-### 1. Register / Login
+Three independently deployable services, each with its own database — no
+API gateway, no shared Users table. One diagram, one end-to-end request
+flow through the four main components (client + the three services):
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant C as Client
     participant A as auth-service
-    participant DB as auth_db
-
-    C->>A: POST /api/v1/auth/register/ {email, password, confirm_password}
-    A->>A: validate password, hash it
-    A->>DB: INSERT User(tier=Free, is_staff=False)
-    DB-->>A: User row
-    A-->>C: 201 {id, email, access, refresh}
-
-    Note over C,A: later, on a new session
-    C->>A: POST /api/v1/auth/login/ {email, password} (5/min per IP)
-    A->>DB: SELECT User WHERE email
-    alt invalid credentials
-        A->>A: logger.warning("failed login attempt")
-        A-->>C: 401 Unauthorized
-    else valid
-        A->>A: issue JWT pair with user_id / email / is_staff / tier claims
-        A-->>C: 200 {access, refresh}
-    end
-```
-
-### 2. Create a Short URL
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Client
     participant U as url-service
-    participant DB as url_db
-    participant R as Redis
+    participant AN as analytics-service
 
-    C->>U: POST /api/v1/urls/ (Bearer JWT) {original_url, custom_alias?, tags?}
-    U->>U: verify JWT signature locally, read claims (no call to auth-service)
-    alt custom_alias set and tier == Free
-        U-->>C: 400 "Custom aliases are a Premium/Admin feature."
-    else Free tier at 10 active URLs
-        U-->>C: 403 Forbidden
-    else allowed
-        U->>U: generate unique short_url (or validate custom_alias)
-        U->>DB: INSERT Url(owner_id, owner_email, short_url, ...)
-        DB-->>U: Url row
-        U->>R: SET short_code → serialized Url
-        U-->>C: 201 {short_url, short_link, ...}
-    end
-```
+    Note over C,A: 1 · Authenticate
+    C->>A: POST /api/v1/auth/register/ (or /login/)
+    A->>A: validate credentials, issue JWT
+    A-->>C: access + refresh token<br/>(claims: user_id, email, is_staff, tier)
 
-### 3. Redirect + Click Tracking
+    Note over C,U: 2 · Create a short URL
+    C->>U: POST /api/v1/urls/ (Bearer JWT)
+    U->>U: verify JWT locally — shared secret,<br/>no call back to auth-service
+    U-->>C: 201 { short_url, short_link, ... }
 
-The hot path (cache lookup → 302) never waits on analytics-service or the
-geolocation lookup — both run on a background daemon thread after the
-redirect has already been sent.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Client
-    participant U as url-service
-    participant R as Redis
-    participant DB as url_db
-    participant T as Background Thread
-    participant Geo as ip-api.com
-    participant AS as analytics-service
-    participant CW as Celery Worker (analytics)
-    participant ADB as analytics_db
-
+    Note over C,U: 3 · Redirect (public, no auth)
     C->>U: GET /{short_code}/
-    U->>R: GET short_code
-    alt cache hit
-        R-->>U: cached Url
-    else cache miss
-        U->>DB: SELECT Url WHERE short_url = ? OR custom_alias = ?
-        DB-->>U: Url row (404 if missing / inactive / expired)
-        U->>R: SET short_code → Url
-    end
-    U->>DB: UPDATE click_count = click_count + 1 (atomic)
-    U-->>C: 302 Location: original_url
+    U->>U: resolve URL, increment click_count
+    U-->>C: 302 → original_url
 
-    rect rgba(52, 168, 83, 0.08)
-    Note right of U: off the request path — spawned as a daemon thread
-    U->>T: spawn(track_click)
-    T->>Geo: GET geolocation for request IP
-    Geo-->>T: {city, country} (or null for private/local IPs)
-    T->>AS: POST /api/v1/events/click/ (X-Internal-Key) {short_code, owner_id, ip, city, country, ...}
-    AS->>AS: verify X-Internal-Key
-    AS->>CW: track_click_task.delay(...)
-    AS-->>T: 201 Created (enqueued)
-    CW->>ADB: INSERT ClickEvent
-    end
+    U->>AN: POST /api/v1/events/click/ (X-Internal-Key)<br/>fire-and-forget, off the request path
+    AN->>AN: enqueue write via Celery (write-behind)
+
+    Note over C,AN: 4 · Query analytics
+    C->>AN: GET /api/v1/analytics/... (Bearer JWT)
+    AN-->>C: click stats / time-series
 ```
 
-### 4. Detailed Analytics (Premium/Admin)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Client
-    participant AS as analytics-service
-    participant ADB as analytics_db
-
-    C->>AS: GET /api/v1/analytics/{short_code}/ (Bearer JWT)
-    AS->>AS: verify JWT locally, read tier claim
-    alt tier == Free
-        AS-->>C: 403 Forbidden
-    else Premium / Admin
-        AS->>ADB: aggregate daily time-series + city/country breakdown
-        ADB-->>AS: rows
-        AS-->>C: 200 {click_count, time_series[], geo_breakdown[]}
-    end
-```
-
-### 5. Delete a URL (cascades to analytics)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Client
-    participant U as url-service
-    participant DB as url_db
-    participant R as Redis
-    participant T as Background Thread
-    participant AS as analytics-service
-    participant ADB as analytics_db
-
-    C->>U: DELETE /api/v1/urls/{short_code}/ (Bearer JWT)
-    U->>U: IsOwnerOrReadOnly check (owner or is_staff)
-    alt not owner and not admin
-        U->>U: logger.warning("unauthorized write attempt")
-        U-->>C: 403 Forbidden
-    else authorized
-        U->>DB: DELETE Url row
-        U->>R: evict cached entry
-        U-->>C: 204 No Content
-        U->>T: spawn(cascade_delete) — fire-and-forget
-        T->>AS: DELETE /api/v1/events/click/ (X-Internal-Key) {short_codes: [...]}
-        AS->>ADB: DELETE ClickEvent WHERE short_code IN (...)
-    end
-```
-
-### 6. Nightly Archive Job (Celery Beat)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Beat as Celery Beat (url-service)
-    participant W as Celery Worker
-    participant DB as url_db
-    participant R as Redis
-
-    Beat->>W: trigger archive_expired_urls (once every 24h)
-    W->>DB: SELECT Url WHERE expires_at < now() AND is_archived = False
-    DB-->>W: expired Url rows
-    loop each expired Url
-        W->>DB: UPDATE is_archived=True, is_active=False, archived_at=now()
-        W->>R: evict cached entry
-    end
-```
+**Reading it**: auth-service is only ever called once, at login — url-service
+and analytics-service both verify the JWT's signature themselves and never
+call back to it. The click-tracking call from url-service to
+analytics-service is the one runtime hop between services, and it's
+fire-and-forget: it runs after the 302 has already gone back to the client,
+so a slow or unreachable analytics-service never delays a redirect.
 
 ## 🚀 Features
 
