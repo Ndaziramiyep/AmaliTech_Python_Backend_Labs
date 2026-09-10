@@ -64,6 +64,7 @@ pytest_cache/
 
 # Docker
 *.env
+.env.local
 docker-compose.override.yml
 *.log
 *.pid
