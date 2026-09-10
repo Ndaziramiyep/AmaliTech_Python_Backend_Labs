@@ -148,6 +148,12 @@ INTERNAL_API_KEY = env("INTERNAL_API_KEY", default="change-me-shared-internal-ke
 
 ANALYTICS_SERVICE_URL = env("ANALYTICS_SERVICE_URL", default="http://localhost:8003")
 
+# url-preview is called once, right after a Url is created, to fetch its
+# title/description/favicon — a distinct shared secret from INTERNAL_API_KEY
+# above, since it's a different downstream service with its own copy of it.
+URL_PREVIEW_SERVICE_URL = env("URL_PREVIEW_SERVICE_URL", default="http://localhost:8004")
+URL_PREVIEW_INTERNAL_TOKEN = env("URL_PREVIEW_INTERNAL_TOKEN", default="change-me-shared-internal-token")
+
 # drf-spectacular Configuration
 SPECTACULAR_SETTINGS = {
     "TITLE": "URL Shortener Service API",
