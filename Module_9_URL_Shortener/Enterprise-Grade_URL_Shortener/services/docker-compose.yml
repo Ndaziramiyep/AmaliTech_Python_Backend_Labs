@@ -141,6 +141,47 @@ services:
       analytics-redis:
         condition: service_started
 
+  # ---- url-preview ----------------------------------------------------------
+  url-preview-db:
+    image: postgres:16-alpine
+    container_name: url_preview_db
+    env_file:
+      # This .env carries both sets of names: DB_NAME/DB_USER/DB_PASSWORD
+      # for Django (config/settings.py) and POSTGRES_DB/POSTGRES_USER/
+      # POSTGRES_PASSWORD (same values) for this official postgres image,
+      # which only recognizes its own POSTGRES_* names.
+      - ./url-preview/.env
+    ports:
+      - "5437:5432"
+    volumes:
+      - url_preview_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  url-preview-redis:
+    image: redis:7-alpine
+    container_name: url_preview_redis
+    ports:
+      - "6382:6379"
+    volumes:
+      - url_preview_redis_data:/data
+    command: redis-server --appendonly yes
+
+  url-preview:
+    build: ./url-preview
+    container_name: url_preview_service
+    command: sh -c "python manage.py migrate && gunicorn -c gunicorn.conf.py config.wsgi:application"
+    ports:
+      - "127.0.0.1:8004:8000"  # local debugging only — never routed through the gateway at all
+    depends_on:
+      url-preview-db:
+        condition: service_healthy
+      url-preview-redis:
+        condition: service_started
+
   # ---- gateway -------------------------------------------------------------
   gateway:
     image: nginx:alpine
@@ -168,3 +209,5 @@ volumes:
   redis_data:
   analytics_postgres_data:
   analytics_redis_data:
+  url_preview_postgres_data:
+  url_preview_redis_data:
