@@ -109,6 +109,60 @@ the caller). Only url-service → analytics-service crosses a service boundary
 at runtime — auth-service is never called by the other two after token
 issuance.
 
+## 🔄 Sequence Diagrams
+
+### 1. Register / Login
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as auth-service
+    participant DB as auth_db
+
+    C->>A: POST /api/v1/auth/register/ {email, password, confirm_password}
+    A->>A: validate password, hash it
+    A->>DB: INSERT User(tier=Free, is_staff=False)
+    DB-->>A: User row
+    A-->>C: 201 {id, email, access, refresh}
+
+    Note over C,A: later, on a new session
+    C->>A: POST /api/v1/auth/login/ {email, password} (5/min per IP)
+    A->>DB: SELECT User WHERE email
+    alt invalid credentials
+        A->>A: logger.warning("failed login attempt")
+        A-->>C: 401 Unauthorized
+    else valid
+        A->>A: issue JWT pair with user_id / email / is_staff / tier claims
+        A-->>C: 200 {access, refresh}
+    end
+```
+
+### 2. Create a Short URL
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant U as url-service
+    participant DB as url_db
+    participant R as Redis
+
+    C->>U: POST /api/v1/urls/ (Bearer JWT) {original_url, custom_alias?, tags?}
+    U->>U: verify JWT signature locally, read claims (no call to auth-service)
+    alt custom_alias set and tier == Free
+        U-->>C: 400 "Custom aliases are a Premium/Admin feature."
+    else Free tier at 10 active URLs
+        U-->>C: 403 Forbidden
+    else allowed
+        U->>U: generate unique short_url (or validate custom_alias)
+        U->>DB: INSERT Url(owner_id, owner_email, short_url, ...)
+        DB-->>U: Url row
+        U->>R: SET short_code → serialized Url
+        U-->>C: 201 {short_url, short_link, ...}
+    end
+```
+
 ## 🚀 Features
 
 - **JWT Authentication** (auth-service): register/login with email + password; access & refresh tokens carry custom `email`, `is_staff`, and `tier` claims
