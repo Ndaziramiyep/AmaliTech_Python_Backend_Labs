@@ -576,7 +576,7 @@ Enterprise-Grade_URL_Shortener/
 │   │   │   ├── admin.py           # UserAdmin exposing tier/is_premium
 │   │   │   ├── health.py          # GET /health/ — database connectivity
 │   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
-│   │   │   ├── profiling.py       # ProfilingMiddleware — opt-in cProfile via ?profile=1
+│   │   │   ├── profiling.py       # ProfilingMiddleware (?profile=1) + @profile_function/@profile_lines decorators
 │   │   │   └── api/               # register/login/refresh views (is_staff/tier JWT claims, failed-login warnings), serializers, urls
 │   │   ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
 │   │   ├── Dockerfile              # this service's image
@@ -591,7 +591,7 @@ Enterprise-Grade_URL_Shortener/
 │   │   │   ├── tasks.py           # archive_expired_urls — nightly Celery Beat cleanup job
 │   │   │   ├── health.py          # GET /health/ — database + Redis connectivity
 │   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
-│   │   │   ├── profiling.py       # ProfilingMiddleware — opt-in cProfile via ?profile=1
+│   │   │   ├── profiling.py       # ProfilingMiddleware (?profile=1) + @profile_function/@profile_lines decorators
 │   │   │   ├── security/authentication.py  # StatelessJWTAuthentication (reads is_staff/tier claims) + its Swagger "Authorize" scheme
 │   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting + ip-api.com geolocation + cascade-delete
 │   │   │   └── api/               # views (short-code/alias gen, Redis cache, redirect+click_count, background threading), serializers, permissions (IsOwnerOrReadOnly), throttling (TieredUserRateThrottle), pagination (UrlPagination), urls
@@ -606,7 +606,7 @@ Enterprise-Grade_URL_Shortener/
 │       │   ├── tasks.py           # track_click_task — write-behind ClickEvent persistence
 │       │   ├── health.py          # GET /health/ — database + Redis connectivity
 │       │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
-│       │   ├── profiling.py       # ProfilingMiddleware — opt-in cProfile via ?profile=1
+│       │   ├── profiling.py       # ProfilingMiddleware (?profile=1) + @profile_function/@profile_lines decorators
 │       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
 │       │   └── api/                # click-record/cascade-delete + stats + detailed-analytics views, permissions (IsInternalService, IsPremiumOrAdmin)
 │       ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
@@ -761,15 +761,20 @@ that includes `%(D)s` — the request time in microseconds — so per-request
 latency is visible in plain container logs without turning on profiling at
 all.
 
-### Request Profiling
+### Profiling
 
-Every service ships a `ProfilingMiddleware`
-(`accounts/profiling.py`, `url_shortener/profiling.py`,
-`analytics/profiling.py`) built on the standard library's `cProfile` — no
-extra dependency. It's a double opt-in, off unless both are true:
+Every service's `profiling.py` (`accounts/profiling.py`,
+`url_shortener/profiling.py`, `analytics/profiling.py`) provides profiling
+at two different granularities, both gated the same way — off unless
+**both** are true:
 
 1. `ENABLE_PROFILING=True` in that service's `.env` (`settings.PROFILING_ENABLED`)
-2. The request itself carries `?profile=1`
+2. Something explicitly asks for it (a request query param, or a decorator on the function itself)
+
+#### Whole request: `ProfilingMiddleware`
+
+Built on the standard library's `cProfile` — no extra dependency. Profiles
+one request end-to-end when it carries `?profile=1`:
 
 ```bash
 # Inline: top 30 stack frames by cumulative time, human-readable
@@ -781,16 +786,66 @@ pip install snakeviz
 snakeviz logs/profiles/api_v1_urls-<timestamp>.prof
 ```
 
-`logs/profiles/` sits under the same gitignored `logs/` directory as
-`logs.json` (see [Structured Logging](#-development-notes)) — it's runtime
-output, not source, and the middleware creates it on demand.
+Use this to see the whole call graph for one HTTP request, including
+Django/DRF/middleware overhead outside your own code.
+
+#### One function: `@profile_function` and `@profile_lines`
+
+For measuring a *specific* function instead of a whole request — apply
+either decorator directly to it:
+
+- **`@profile_function`** — wraps it with `cProfile`, same as the
+  middleware but scoped to just that function's own call graph.
+- **`@profile_lines`** — wraps it with
+  [`line_profiler`](https://github.com/pyutils/line_profiler) (a
+  dependency in every service's `requirements.txt`), timing every
+  individual *line* inside the function — the only way to see, e.g., that
+  one specific line inside a function is 98% of its runtime, which
+  `cProfile` alone can't tell you since it only measures at function
+  granularity.
+
+Both append a timestamped, human-readable entry to `logs/profiling.log`
+every time the decorated function is called — no return-value change, no
+per-call configuration:
+
+```python
+from url_shortener.profiling import profile_function, profile_lines
+
+@profile_lines
+def _resolve_short_code(short_code):
+    ...
+
+class RedirectUrlView(APIView):
+    @profile_function
+    def get(self, request, short_code):
+        ...
+```
+
+A handful of hot-path functions already carry one or the other as a
+working example: `LoginView.post` / `_tokens_for_user` (auth-service),
+`RedirectUrlView.get` / `_resolve_short_code` (url-service), and
+`DetailedAnalyticsView.get` / `UrlClickStatsView.get` (analytics-service).
+Running that service's test suite with `ENABLE_PROFILING=true` is enough to
+see real entries land in `logs/profiling.log` — e.g. `_tokens_for_user`'s
+line profile shows JWT `str(access)` serialization as ~98% of that
+function's time, and `LoginView.post`'s function profile shows
+`pbkdf2_hmac` (password hashing) dominating the login request overall.
+
+Both decorators are a no-op (a plain passthrough call, no profiler
+attached) whenever `PROFILING_ENABLED` is off, so leaving them in the
+codebase costs nothing in production.
+
+`logs/profiles/` and `logs/profiling.log` both sit under the same
+gitignored `logs/` directory as `logs.json` (see
+[Structured Logging](#-development-notes)) — runtime output, not source,
+created on demand.
 
 **Never leave `ENABLE_PROFILING=True` on in a publicly reachable
-production environment**: a profiled request runs measurably slower (every
-function call is intercepted), and letting untrusted clients trigger one on
-demand is a cheap way to degrade the service. Turn it on only where traffic
-is already trusted/internal, and only for as long as you're actively
-investigating something.
+production environment**: a profiled request or function call runs
+measurably slower (every call, or every line, is intercepted), and letting
+untrusted clients trigger one on demand is a cheap way to degrade the
+service. Turn it on only where traffic is already trusted/internal, and
+only for as long as you're actively investigating something.
 
 ## 🚢 Production Deployment
 
