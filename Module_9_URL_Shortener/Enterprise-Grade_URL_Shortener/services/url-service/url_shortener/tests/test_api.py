@@ -35,7 +35,14 @@ class UrlListCreateAPITest(APITestCase):
     """Tests the list/create endpoint's authentication, validation, pagination, tag search, and per-owner scoping."""
 
     def setUp(self):
-        """Mint an access token for a test user before each test."""
+        """Mint an access token for a test user before each test.
+
+        Also clears the shared cache — it isn't rolled back between tests
+        like the DB is, and TieredUserRateThrottle's request history lives
+        there too, so a creation test earlier in the run would otherwise
+        leak throttle state into a later one for the same user id.
+        """
+        cache.clear()
         self.access_token = make_access_token(user_id=1, email="alice@example.com")
 
     def authenticate(self, token=None):
@@ -67,6 +74,16 @@ class UrlListCreateAPITest(APITestCase):
         response = self.client.post(reverse('list-create-url'), data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('url_shortener.api.views.fetch_url_preview_task.delay')
+    def test_create_queues_a_preview_fetch(self, mock_delay):
+        """Assert that creating a short URL queues an async preview fetch for that Url's id."""
+        self.authenticate()
+        data = {'original_url': 'https://www.example.com'}
+        response = self.client.post(reverse('list-create-url'), data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mock_delay.assert_called_once_with(response.data['id'])
 
     def test_list_requires_authentication(self):
         """Assert that listing URLs without credentials returns 401."""
