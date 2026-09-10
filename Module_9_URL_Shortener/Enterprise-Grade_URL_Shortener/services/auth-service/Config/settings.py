@@ -21,6 +21,10 @@ DEBUG = env.bool("DEBUG", default=False)
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
+# Gate for accounts.profiling.ProfilingMiddleware — off by default so a
+# stray `?profile=1` does nothing unless this is deliberately turned on.
+PROFILING_ENABLED = env.bool("ENABLE_PROFILING", default=False)
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -38,6 +42,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "accounts.profiling.ProfilingMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
