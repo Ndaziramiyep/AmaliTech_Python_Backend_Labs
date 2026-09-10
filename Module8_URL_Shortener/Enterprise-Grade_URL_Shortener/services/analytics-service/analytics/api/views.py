@@ -116,6 +116,7 @@ class DetailedAnalyticsView(APIView):
             "are null for clicks whose IP couldn't be geolocated."
         ),
     )
+    @profile_function
     def get(self, request, short_code):
         """Aggregates this short code's click events into a daily time series and a city/country breakdown."""
         owner_filter = {} if request.user.is_staff else {"owner_id": request.user.id}
