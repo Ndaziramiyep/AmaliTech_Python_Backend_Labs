@@ -575,8 +575,10 @@ Enterprise-Grade_URL_Shortener/
 │   │   │   ├── models.py          # User model, its own migrations
 │   │   │   ├── admin.py           # UserAdmin exposing tier/is_premium
 │   │   │   ├── health.py          # GET /health/ — database connectivity
-│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout logging
+│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
+│   │   │   ├── profiling.py       # ProfilingMiddleware — opt-in cProfile via ?profile=1
 │   │   │   └── api/               # register/login/refresh views (is_staff/tier JWT claims, failed-login warnings), serializers, urls
+│   │   ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
 │   │   ├── Dockerfile              # this service's image
 │   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
 │   │   ├── requirements.txt, manage.py, .env.example
@@ -588,10 +590,12 @@ Enterprise-Grade_URL_Shortener/
 │   │   │   ├── caching.py         # cache_key/cache_url/invalidate_cache — shared by api/views.py and tasks.py
 │   │   │   ├── tasks.py           # archive_expired_urls — nightly Celery Beat cleanup job
 │   │   │   ├── health.py          # GET /health/ — database + Redis connectivity
-│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout logging
+│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
+│   │   │   ├── profiling.py       # ProfilingMiddleware — opt-in cProfile via ?profile=1
 │   │   │   ├── security/authentication.py  # StatelessJWTAuthentication (reads is_staff/tier claims) + its Swagger "Authorize" scheme
 │   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting + ip-api.com geolocation + cascade-delete
 │   │   │   └── api/               # views (short-code/alias gen, Redis cache, redirect+click_count, background threading), serializers, permissions (IsOwnerOrReadOnly), throttling (TieredUserRateThrottle), pagination (UrlPagination), urls
+│   │   ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
 │   │   ├── Dockerfile
 │   │   ├── docker-compose.yml      # url-db + redis + url-service + celery-worker + celery-beat — runs standalone
 │   │   └── requirements.txt, manage.py, .env.example
@@ -601,9 +605,11 @@ Enterprise-Grade_URL_Shortener/
 │       │   ├── models.py          # ClickEvent (city/country, short_code sized for a custom_alias)
 │       │   ├── tasks.py           # track_click_task — write-behind ClickEvent persistence
 │       │   ├── health.py          # GET /health/ — database + Redis connectivity
-│       │   ├── logging_utils.py   # JSONFormatter for structured stdout logging
+│       │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
+│       │   ├── profiling.py       # ProfilingMiddleware — opt-in cProfile via ?profile=1
 │       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
 │       │   └── api/                # click-record/cascade-delete + stats + detailed-analytics views, permissions (IsInternalService, IsPremiumOrAdmin)
+│       ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
 │       ├── Dockerfile
 │       ├── docker-compose.yml      # analytics-db + redis + analytics-service + celery-worker — runs standalone
 │       └── requirements.txt, manage.py, .env.example
