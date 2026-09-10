@@ -144,8 +144,8 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=DEBUG)
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 
-# Logging Configuration — structured JSON to stdout; 500s (django.request)
-# and security warnings (django.security) are always captured.
+# Logging Configuration — structured JSON to stdout and to logs/logs.json;
+# 500s (django.request) and security warnings (django.security) are always captured.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -157,19 +157,24 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "json",
         },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": BASE_DIR / "logs" / "logs.json",
+            "formatter": "json",
+        },
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "file"],
         "level": "INFO",
     },
     "loggers": {
         "django.request": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "ERROR",
             "propagate": False,
         },
         "django.security": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "WARNING",
             "propagate": False,
         },
