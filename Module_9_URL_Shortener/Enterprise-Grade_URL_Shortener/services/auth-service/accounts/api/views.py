@@ -1,3 +1,5 @@
+import logging
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -8,6 +10,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.api.permissions import IsInternalGateway
 from accounts.api.serializers import LoginSerializer, RegisterSerializer
+from accounts.profiling import profile_function, profile_lines
+
+logger = logging.getLogger(__name__)
 
 
 class LoginRateThrottle(AnonRateThrottle):
@@ -25,6 +30,7 @@ class TokenResponseSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
 
+@profile_lines
 def _tokens_for_user(user):
     """Builds a JWT access/refresh token pair embedding the user's email, is_staff, and tier claims."""
     refresh = RefreshToken.for_user(user)
@@ -81,10 +87,15 @@ class LoginView(APIView):
         responses={200: TokenResponseSerializer},
         description="Log in with email and password to receive JWT access and refresh tokens.",
     )
+    @profile_function
     def post(self, request):
         """Validates login credentials and returns JWT tokens for the authenticated user."""
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
+            logger.warning(
+                "Failed login attempt for email=%s from %s",
+                request.data.get('email'), request.META.get('REMOTE_ADDR'),
+            )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         user = serializer.validated_data['user']
