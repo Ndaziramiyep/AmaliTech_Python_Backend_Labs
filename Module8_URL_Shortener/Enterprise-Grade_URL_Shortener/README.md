@@ -18,20 +18,10 @@ together, by design.
 | **url-service**       | `8002` | `url_db` + Redis + Celery worker/beat   | Create short URLs, resolve/redirect, report click events, nightly-archive expired URLs  |
 | **analytics-service** | `8003` | `analytics_db` + Redis + Celery worker  | Record click events (write-behind via Celery), serve click stats                        |
 
-```
-┌──────────────┐      register/login       ┌──────────────┐
-│   client     │ ─────────────────────────▶│ auth-service │
-│ (browser/    │                            │   :8001      │
-│  curl/etc.)  │◀──────── JWT ──────────────┘──────────────┘
-│              │
-│              │  Bearer JWT               ┌──────────────┐      click event      ┌───────────────────┐
-│              │ ─────────────────────────▶│ url-service  │ ────────────────────▶│ analytics-service  │
-└──────────────┘   create / redirect       │   :8002      │  (X-Internal-Key)     │      :8003         │
-                                            └──────────────┘                       └───────────────────┘
-```
-
 ## 📑 Table of Contents
 
+- [Architecture](#-architecture)
+- [Sequence Diagrams](#-sequence-diagrams)
 - [Features](#-features)
 - [Technology Stack](#️-technology-stack)
 - [Prerequisites](#-prerequisites)
@@ -46,6 +36,78 @@ together, by design.
 - [Troubleshooting](#-troubleshooting)
 - [Development Notes](#-development-notes)
 - [Production Deployment](#-production-deployment)
+
+## 🧩 Architecture
+
+Three independently deployable services, each with its own database and its
+own Redis/Celery where it needs one. There is no API gateway and no shared
+Users table — url-service and analytics-service verify JWTs themselves
+against a secret shared with auth-service at deploy time, never by calling
+back to it at request time.
+
+```mermaid
+flowchart TB
+    Client(["Client<br/>browser / curl / Swagger UI"])
+
+    subgraph AuthService["auth-service :8001"]
+        direction TB
+        AuthAPI["Django REST API<br/>register · login · refresh"]
+        AuthDB[("auth_db<br/>PostgreSQL")]
+        AuthAPI --> AuthDB
+    end
+
+    subgraph UrlService["url-service :8002"]
+        direction TB
+        UrlAPI["Django REST API<br/>create · list · update · delete · redirect"]
+        UrlDB[("url_db<br/>PostgreSQL")]
+        UrlRedis[("Redis<br/>cache + Celery broker")]
+        UrlBeat["Celery Beat<br/>nightly archive_expired_urls"]
+        UrlWorker["Celery Worker"]
+        UrlAPI -->|"cache-first read<br/>write-through on update"| UrlRedis
+        UrlAPI --> UrlDB
+        UrlBeat --> UrlWorker
+        UrlWorker --> UrlDB
+        UrlWorker --> UrlRedis
+    end
+
+    subgraph AnalyticsService["analytics-service :8003"]
+        direction TB
+        AnalyticsAPI["Django REST API<br/>click stats · detailed analytics"]
+        AnalyticsDB[("analytics_db<br/>PostgreSQL")]
+        AnalyticsRedis[("Redis<br/>Celery broker")]
+        AnalyticsWorker["Celery Worker<br/>write-behind persistence"]
+        AnalyticsAPI --> AnalyticsRedis
+        AnalyticsAPI -->|"read"| AnalyticsDB
+        AnalyticsWorker --> AnalyticsRedis
+        AnalyticsWorker -->|"INSERT / DELETE ClickEvent"| AnalyticsDB
+    end
+
+    Client -- "① POST register / login" --> AuthAPI
+    AuthAPI -. "JWT access + refresh<br/>(user_id, email, is_staff, tier)" .-> Client
+
+    Client -- "② Bearer JWT: create / list / update / delete" --> UrlAPI
+    Client -- "③ GET /{short_code}/  (redirect)" --> UrlAPI
+
+    UrlAPI -. "④ click event, fire-and-forget<br/>background thread · X-Internal-Key" .-> AnalyticsAPI
+    UrlAPI -. "cascade-delete click history<br/>background thread · X-Internal-Key" .-> AnalyticsAPI
+
+    Client -- "⑤ Bearer JWT: click stats / analytics" --> AnalyticsAPI
+
+    AuthAPI -.->|"shared JWT_SECRET_KEY<br/>(verified offline, no runtime call)"| UrlAPI
+    AuthAPI -.->|"shared JWT_SECRET_KEY<br/>(verified offline, no runtime call)"| AnalyticsAPI
+
+    style Client fill:#e8f0fe,stroke:#4285f4,color:#1a1a1a
+    style AuthService fill:#fff7e6,stroke:#d9a441
+    style UrlService fill:#e6f4ea,stroke:#34a853
+    style AnalyticsService fill:#fce8e6,stroke:#ea4335
+```
+
+**Legend**: solid arrows are synchronous HTTP calls in the request/response
+path; dashed arrows are either the JWT payload/claims returned to the client,
+or a fire-and-forget call made from a background daemon thread (never blocks
+the caller). Only url-service → analytics-service crosses a service boundary
+at runtime — auth-service is never called by the other two after token
+issuance.
 
 ## 🚀 Features
 
