@@ -147,7 +147,6 @@ SIMPLE_JWT = {
 INTERNAL_API_KEY = env("INTERNAL_API_KEY", default="change-me-shared-internal-key")
 
 ANALYTICS_SERVICE_URL = env("ANALYTICS_SERVICE_URL", default="http://localhost:8003")
-PREVIEW_SERVICE_URL = env("PREVIEW_SERVICE_URL", default="http://localhost:8004")
 
 # drf-spectacular Configuration
 SPECTACULAR_SETTINGS = {
@@ -185,12 +184,7 @@ CELERY_TASK_IGNORE_RESULT = True
 CELERY_TIMEZONE = TIME_ZONE
 # Runs tasks inline (no broker/worker needed) under `manage.py test`.
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=TESTING)
-# False so a task's exception surfaces the same way under eager (test) mode
-# as it does for real: swallowed by Celery, never raised back into the view
-# that called .delay() — record_click_task/delete_click_events_task rely on
-# this to keep failures in analytics-service from ever breaking a redirect
-# or delete, eager or not.
-CELERY_TASK_EAGER_PROPAGATES = False
+CELERY_TASK_EAGER_PROPAGATES = True
 
 # Logging Configuration — structured JSON to stdout and to logs/logs.json;
 # 500s (django.request) and security warnings (django.security) are always captured.

@@ -1,3 +1,4 @@
+import threading
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -21,16 +22,21 @@ def make_access_token(user_id, email, is_staff=False, tier="Free"):
     return str(token)
 
 
+def _call_and_join_threads(callable_):
+    """Calls callable_(), then joins any background threads it spawned, making fire-and-forget side effects deterministic in tests."""
+    before = set(threading.enumerate())
+    result = callable_()
+    for thread in set(threading.enumerate()) - before:
+        thread.join(timeout=2)
+    return result
+
+
 class UrlListCreateAPITest(APITestCase):
     """Tests the list/create endpoint's authentication, validation, pagination, tag search, and per-owner scoping."""
 
     def setUp(self):
-        """Mint an access token for a test user before each test, stub out the async preview fetch every create() triggers, and clear the shared cache (throttle history included) so it isn't carried over from an earlier test."""
-        cache.clear()
+        """Mint an access token for a test user before each test."""
         self.access_token = make_access_token(user_id=1, email="alice@example.com")
-        patcher = patch('url_shortener.api.views.fetch_url_preview_task.delay')
-        self.mock_fetch_preview_delay = patcher.start()
-        self.addCleanup(patcher.stop)
 
     def authenticate(self, token=None):
         """Attach a Bearer credential (the test user's by default) on the client."""
@@ -53,15 +59,6 @@ class UrlListCreateAPITest(APITestCase):
         self.assertIn('short_url', response.data)
         self.assertIn('short_link', response.data)
         self.assertEqual(response.data['owner'], 'alice@example.com')
-
-    def test_create_queues_preview_fetch(self):
-        """Assert that creating a short URL queues an async title/description/favicon fetch for it."""
-        self.authenticate()
-        data = {'original_url': 'https://www.example.com'}
-
-        response = self.client.post(reverse('list-create-url'), data, format='json')
-
-        self.mock_fetch_preview_delay.assert_called_once_with(response.data['id'])
 
     def test_invalid_url(self):
         """Assert that submitting a malformed URL returns a 400 validation error."""
@@ -328,8 +325,7 @@ class UrlDetailAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(Url.objects.filter(short_url='test123').exists())
 
-    @patch('url_shortener.api.views.delete_click_events_task.delay')
-    def test_owner_can_delete(self, mock_delay):
+    def test_owner_can_delete(self):
         """Assert that the URL's own owner can delete it."""
         self.authenticate(make_access_token(user_id=2, email="bob@example.com"))
 
@@ -338,17 +334,16 @@ class UrlDetailAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Url.objects.filter(short_url='test123').exists())
 
-    @patch('url_shortener.api.views.delete_click_events_task.delay')
-    def test_delete_cascades_to_analytics_service(self, mock_delay):
-        """Assert that deleting a URL queues a cascade-delete of its click history."""
+    @patch('url_shortener.api.views.analytics_client.delete_click_events')
+    def test_delete_cascades_to_analytics_service(self, mock_delete_click_events):
+        """Assert that deleting a URL fire-and-forgets a cascade-delete of its click history."""
         self.authenticate(make_access_token(user_id=2, email="bob@example.com"))
 
-        self.client.delete(reverse('url-detail', kwargs={'short_code': 'test123'}))
+        _call_and_join_threads(lambda: self.client.delete(reverse('url-detail', kwargs={'short_code': 'test123'})))
 
-        mock_delay.assert_called_once_with(['test123'])
+        mock_delete_click_events.assert_called_once_with(['test123'])
 
-    @patch('url_shortener.api.views.delete_click_events_task.delay')
-    def test_admin_can_delete_another_users_url(self, mock_delay):
+    def test_admin_can_delete_another_users_url(self):
         """Assert that a staff/admin user can delete a URL they don't own."""
         self.authenticate(make_access_token(user_id=99, email="admin@example.com", is_staff=True))
 
@@ -413,24 +408,26 @@ class RedirectUrlAPITest(APITestCase):
             owner_email="bob@example.com",
         )
 
-    @patch('url_shortener.api.views.record_click_task.delay')
-    def test_redirect_success(self, mock_delay):
-        """Assert that resolving a known short code redirects and queues a click event in the background."""
-        response = self.client.get(reverse('redirect-url', kwargs={'short_code': 'test123'}))
+    @patch('url_shortener.api.views.analytics_client.record_click')
+    def test_redirect_success(self, mock_record_click):
+        """Assert that resolving a known short code redirects and records a click event in the background."""
+        response = _call_and_join_threads(
+            lambda: self.client.get(reverse('redirect-url', kwargs={'short_code': 'test123'}))
+        )
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertEqual(response.url, "https://www.example.com")
-        mock_delay.assert_called_once()
-        self.assertEqual(mock_delay.call_args.kwargs['short_code'], 'test123')
-        self.assertEqual(mock_delay.call_args.kwargs['owner_id'], 2)
+        mock_record_click.assert_called_once()
+        self.assertEqual(mock_record_click.call_args.kwargs['short_code'], 'test123')
+        self.assertEqual(mock_record_click.call_args.kwargs['owner_id'], 2)
 
     def test_redirect_not_found(self):
         """Assert that resolving an unknown short code returns 404."""
         response = self.client.get(reverse('redirect-url', kwargs={'short_code': 'invalid'}))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    @patch('url_shortener.api.views.record_click_task.delay')
-    def test_redirect_increments_click_count(self, mock_delay):
+    @patch('url_shortener.api.views.analytics_client.record_click')
+    def test_redirect_increments_click_count(self, mock_record_click):
         """Assert that each successful redirect atomically increments the Url's click_count."""
         self.client.get(reverse('redirect-url', kwargs={'short_code': 'test123'}))
         self.client.get(reverse('redirect-url', kwargs={'short_code': 'test123'}))

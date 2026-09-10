@@ -1,6 +1,7 @@
 import json
 import random
 import string
+import threading
 
 from django.core.cache import cache
 from django.db.models import F, Q
@@ -19,8 +20,9 @@ from url_shortener.api.permissions import IsOwnerOrReadOnly
 from url_shortener.api.serializers import UrlCreateSerializer, UrlSerializer
 from url_shortener.api.throttling import TieredUserRateThrottle
 from url_shortener.caching import cache_key, cache_url, identifiers_for, invalidate_cache
+from url_shortener.clients import analytics_client
 from url_shortener.models import Tag, Url
-from url_shortener.tasks import delete_click_events_task, fetch_url_preview_task, record_click_task
+from url_shortener.profiling import profile_function, profile_lines
 
 SHORT_CODE_LENGTH = 6
 SHORT_CODE_ALPHABET = string.ascii_letters + string.digits
@@ -61,6 +63,7 @@ def _generate_unique_short_code():
             return code
 
 
+@profile_lines
 def _resolve_short_code(short_code):
     """Looks up a short code's URL data (cache first, then the database), or None if inactive/expired/missing."""
     cached = cache.get(cache_key(short_code))
@@ -133,16 +136,11 @@ class UrlListCreateView(APIView):
             "10 active URLs. Rate limited per tier (Free: 100/day, Premium/Admin: 1000/day). "
             "Omit expires_at (or send it as null) for a link that never expires — "
             "don't use whatever value Swagger's 'Try it out' pre-fills there, it's "
-            "just a schema placeholder and is stale by the time you submit. "
-            "title/description/favicon are auto-fetched from the destination page "
-            "in the background (via preview-service) for any of those you don't "
-            "supply yourself — they may be null in this response and populate a "
-            "moment later; a slow or unreachable destination site never delays "
-            "this response."
+            "just a schema placeholder and is stale by the time you submit."
         ),
     )
     def post(self, request):
-        """Validates the submitted URL, enforces the Free-tier active-URL cap, generates a short code, and persists it — queuing an async title/description/favicon fetch from the destination page."""
+        """Validates the submitted URL, enforces the Free-tier active-URL cap, generates a short code, and persists it."""
         if not request.user.is_staff and request.user.tier != 'Premium':
             active_count = Url.objects.filter(owner_id=request.user.id, is_active=True).count()
             if active_count >= FREE_TIER_ACTIVE_URL_LIMIT:
@@ -172,7 +170,6 @@ class UrlListCreateView(APIView):
         if data.get('tags'):
             url_obj.tags.set(_get_or_create_tags(data['tags']))
         cache_url(url_obj)
-        fetch_url_preview_task.delay(url_obj.id)
 
         return Response(UrlSerializer(url_obj).data, status=status.HTTP_201_CREATED)
 
@@ -276,7 +273,7 @@ class UrlDetailView(APIView):
         invalidate_cache(url_obj)
         codes = identifiers_for(url_obj)
         url_obj.delete()
-        delete_click_events_task.delay(codes)
+        threading.Thread(target=analytics_client.delete_click_events, args=(codes,), daemon=True).start()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -297,6 +294,7 @@ class RedirectUrlView(APIView):
             "correctly with a 302."
         ),
     )
+    @profile_function
     def get(self, request, short_code):
         """Resolves the short code, counts the click, and redirects — reporting to analytics-service happens in the background, never delaying the redirect."""
         result = _resolve_short_code(short_code)
@@ -306,12 +304,16 @@ class RedirectUrlView(APIView):
         Url.objects.filter(Q(short_url=short_code) | Q(custom_alias=short_code)).update(
             click_count=F('click_count') + 1
         )
-        record_click_task.delay(
-            short_code=short_code,
-            owner_id=result['owner_id'],
-            referrer=request.META.get('HTTP_REFERER', ''),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            ip_address=request.META.get('REMOTE_ADDR'),
-        )
+        threading.Thread(
+            target=analytics_client.record_click,
+            kwargs=dict(
+                short_code=short_code,
+                owner_id=result['owner_id'],
+                referrer=request.META.get('HTTP_REFERER', ''),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                ip_address=request.META.get('REMOTE_ADDR'),
+            ),
+            daemon=True,
+        ).start()
 
         return redirect(result['original_url'])
