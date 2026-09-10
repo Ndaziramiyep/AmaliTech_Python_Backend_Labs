@@ -14,6 +14,7 @@ from analytics.api.serializers import (
     UserClickSummaryItemSerializer,
 )
 from analytics.models import ClickEvent
+from analytics.profiling import profile_function, profile_lines
 from analytics.tasks import track_click_task
 
 
@@ -68,6 +69,7 @@ class UrlClickStatsView(APIView):
             "you own. Returns zero/null if that code has no recorded clicks yet."
         ),
     )
+    @profile_lines
     def get(self, request, short_code):
         """Aggregate click count and last-clicked timestamp for the given short code."""
         events = ClickEvent.objects.filter(short_code=short_code, owner_id=request.user.id)
