@@ -6,54 +6,31 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-Educational-lightgrey)
 
-A URL shortener platform split into four independently deployable Django REST
-Framework services. Each has its own database (or none at all, for the
-stateless ones), its own Docker image, and its own `docker-compose.yml` —
-every service builds, runs, and is started entirely on its own; there is no
-root-level orchestration file tying them together, by design. An optional
-nginx **API gateway** (`gateway/`) can front the three client-facing services
-at a single port — see [API Gateway](#-api-gateway) — but every service is
-still fully usable on its own port with the gateway never started at all.
+A URL shortener platform split into three independently deployable Django
+REST Framework services, fronted by a single nginx API gateway. Each service
+has its own database and its own Docker image (`Dockerfile` only — no
+per-service `docker-compose.yml`); one `services/docker-compose.yml`
+builds and runs all of them together, plus the gateway.
 
 | Service               | Port   | Owns                                    | Responsibility                                                                          |
 |-----------------------|--------|------------------------------------------|------------------------------------------------------------------------------------------|
-| **auth-service**      | `8001` | `auth_db` (Users)                       | Register, log in, issue/refresh JWTs                                                    |
-| **url-service**       | `8002` | `url_db` + Redis + Celery worker/beat   | Create short URLs, resolve/redirect, report click events, nightly-archive expired URLs  |
-| **analytics-service** | `8003` | `analytics_db` + Redis + Celery worker  | Record click events (write-behind via Celery), serve click stats                        |
-| **preview-service**   | `8004` | nothing (stateless)                     | Internal-only: fetches a destination page's title/description/favicon for url-service   |
-| **gateway** *(optional)* | `8080` | nothing (stateless nginx)            | Single entry point: routing, centralized auth, rate limiting, docs/admin/health fan-out |
+| **gateway**            | `80`   | —                                        | Single front door: routing, centralized JWT verification (`auth_request`), CORS         |
+| **auth-service**      | `8001`&#42; | `auth_db` (Users)                  | Register, log in, issue/refresh JWTs                                                    |
+| **url-service**       | `8002`&#42; | `url_db` + Redis + Celery worker/beat | Create short URLs, resolve/redirect, report click events, nightly-archive expired URLs  |
+| **analytics-service** | `8003`&#42; | `analytics_db` + Redis + Celery worker | Record click events (write-behind via Celery), serve click stats                    |
 
-```
-┌──────────────┐      register/login       ┌──────────────┐
-│   client     │ ─────────────────────────▶│ auth-service │
-│ (browser/    │                            │   :8001      │
-│  curl/etc.,  │◀──────── JWT ──────────────┘──────────────┘
-│  optionally  │
-│  via the     │  Bearer JWT               ┌──────────────┐   record_click_task    ┌───────────────────┐
-│  gateway on  │ ─────────────────────────▶│ url-service  │ ──(Celery, resilient  ▶│ analytics-service  │
-│  :8080)      │   create / redirect       │   :8002      │   HTTP + retries)      │      :8003         │
-└──────────────┘                           └──────┬───────┘                       └───────────────────┘
-                                                    │ fetch_url_preview_task
-                                                    │ (Celery, resilient HTTP + retries)
-                                                    ▼
-                                            ┌───────────────────┐
-                                            │  preview-service   │
-                                            │       :8004        │
-                                            │ (fetches the       │
-                                            │  destination page) │
-                                            └───────────────────┘
-```
+&#42; Each service's own host port is bound to `127.0.0.1` only, for local
+debugging — real client traffic always goes through the gateway on `:80`.
+See [API Gateway](#-api-gateway) below.
 
 ## 📑 Table of Contents
 
+- [Architecture](#-architecture)
+- [API Gateway](#-api-gateway)
 - [Features](#-features)
 - [Technology Stack](#️-technology-stack)
 - [Prerequisites](#-prerequisites)
 - [Setup Instructions](#-setup-instructions)
-- [API Gateway](#-api-gateway)
-- [Resilient HTTP Communication & Service Decoupling](#-resilient-http-communication--service-decoupling)
-- [External Service Integration: URL Preview](#-external-service-integration-url-preview)
-- [Putting It All Together: A Request's Journey](#-putting-it-all-together-a-requests-journey)
 - [Authenticating Requests](#-authenticating-requests)
 - [API Usage](#-api-usage)
 - [Role-Based Access](#-role-based-access)
@@ -63,7 +40,102 @@ still fully usable on its own port with the gateway never started at all.
 - [API Endpoints](#-api-endpoints)
 - [Troubleshooting](#-troubleshooting)
 - [Development Notes](#-development-notes)
+- [Performance Tuning](#-performance-tuning)
 - [Production Deployment](#-production-deployment)
+
+## 🧩 Architecture
+
+Three independently deployable services, each with its own database — no
+shared Users table — fronted by a single nginx gateway. One diagram, one
+end-to-end request flow through the six main components: client, the three
+services, and the database/cache each service keeps to itself. The gateway
+itself is omitted from this particular diagram for clarity (see
+[API Gateway](#-api-gateway) for its own request flow); every `C->>` call
+below actually lands on the gateway first, which then proxies it to the
+named service.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as auth-service
+    participant U as url-service
+    participant AN as analytics-service
+    participant DB as Database<br/>(one per service)
+    participant R as Redis<br/>(one per service)
+
+    Note over C,A: 1 · Authenticate
+    C->>A: POST /api/v1/auth/register/ (or /login/)
+    A->>DB: INSERT / SELECT User (auth_db)
+    DB-->>A: User row
+    A-->>C: access + refresh token<br/>(claims: user_id, email, is_staff, tier)
+
+    Note over C,U: 2 · Create a short URL
+    C->>U: POST /api/v1/urls/ (Bearer JWT)
+    U->>U: verify JWT locally — shared secret,<br/>no call back to auth-service
+    U->>DB: INSERT Url (url_db)
+    U->>R: SET short_code → Url (cache warm)
+    U-->>C: 201 { short_url, short_link, ... }
+
+    Note over C,U: 3 · Redirect (public, no auth)
+    C->>U: GET /{short_code}/
+    U->>R: GET short_code (cache-first)
+    R-->>U: cached Url (falls back to url_db on a miss)
+    U->>DB: UPDATE click_count (url_db)
+    U-->>C: 302 → original_url
+
+    U->>AN: POST /api/v1/events/click/ (X-Internal-Key)<br/>fire-and-forget, off the request path
+    AN->>R: enqueue via Celery (broker)
+    AN->>DB: INSERT ClickEvent (analytics_db, write-behind)
+
+    Note over C,AN: 4 · Query analytics
+    C->>AN: GET /api/v1/analytics/... (Bearer JWT)
+    AN->>DB: read ClickEvent rows (analytics_db)
+    DB-->>AN: rows
+    AN-->>C: click stats / time-series
+```
+
+**Reading it**: `Database` and `Redis` each stand in for three (resp. two)
+separate instances — every message names which one (`auth_db`, `url_db`,
+`analytics_db`) — there is no shared database or cache anywhere in the
+system. auth-service is only ever called once, at login — url-service and
+analytics-service both verify the JWT's signature themselves and never call
+back to it. The click-tracking call from url-service to analytics-service is
+the one runtime hop between services, and it's fire-and-forget: it runs
+after the 302 has already gone back to the client, so a slow or unreachable
+analytics-service never delays a redirect.
+
+## 🚪 API Gateway
+
+A single nginx gateway (`gateway/`, plain `nginx:alpine`, no custom
+`Dockerfile`) is the recommended front door for all client traffic — the
+only place that verifies a JWT (via `auth_request`, calling auth-service's
+internal token-validate endpoint once per request instead of each service
+verifying it independently) and applies CORS for a browser frontend served
+from a different origin.
+
+| Path prefix                                            | Routed to    | Gated by `auth_request`? |
+|----------------------------------------------------------|--------------|--------------------------|
+| `/api/v1/auth/`                                           | auth-service | No — this is how you get a token |
+| `/api/v1/docs/<service>/`, `/api/v1/schema/<service>/`    | that service | No                       |
+| `/api/v1/urls/`                                           | url-service  | Yes                      |
+| `/api/v1/analytics/`                                      | analytics-service | Yes                 |
+| `/api/v1/internal/`, `/internal/`                         | —            | Blocked (404)            |
+| `/health`                                                 | —            | No — nginx's own liveness check |
+| `/api/v1/` (everything else), `/` (the short link itself) | url-service  | No                       |
+
+Each service still also publishes its own host port (`8001`-`8003`), but
+bound to `127.0.0.1` only and strictly for local debugging — hitting a
+service directly like that bypasses the gateway's `auth_request`/CORS
+entirely and must never carry real client traffic. Service-to-service calls
+(url-service→analytics-service click reporting, analytics-service→url-service
+ownership lookups) also deliberately skip the gateway — they authenticate
+with a shared internal-token header instead of a user's JWT, so routing
+them through the gateway would just be an extra hop.
+
+Full detail — the `auth_request` flow, why `OPTIONS` preflights are
+special-cased, the `envsubst` templating mechanism, configuration — lives in
+[`gateway/README.md`](gateway/README.md).
 
 ## 🚀 Features
 
@@ -74,15 +146,13 @@ still fully usable on its own port with the gateway never started at all.
 - **Rate Limiting**: register/login are throttled per-IP against brute-force; url-service's write endpoints are throttled per-user at a rate that scales with tier (Free: 100/day, Premium/Admin: 1000/day)
 - **URL Shortening & Redirect** (url-service): short codes (or a Premium custom alias) backed by PostgreSQL, cached in Redis for fast lookups (cache-first, DB on a miss, invalidated on every update); supports tags, expiry, activation toggling, and per-link metadata
 - **Click Analytics** (analytics-service): every redirect through url-service is reported as a click event and persisted write-behind by a Celery worker (never written inline in the request); owners can query per-link and per-account click stats
-- **URL Preview** (preview-service, called by url-service): every newly-created short URL gets its destination page's title, meta-description, and favicon fetched and stored automatically, in the background — an owner-supplied value for any of those always wins over the fetched one. See [External Service Integration: URL Preview](#-external-service-integration-url-preview)
-- **API Gateway** (`gateway/`, optional): a single nginx entry point in front of the three client-facing services — path-based routing, centralized JWT verification (`auth_request` to auth-service, once per request, instead of every service verifying independently), per-IP rate limiting, and fan-out routes for each service's docs/admin/health under an unambiguous gateway path — see [API Gateway](#-api-gateway)
-- **Resilient HTTP + Service Decoupling** (url-service → analytics-service and preview-service): click/delete/preview requests are handed to a Celery task (broker-backed queue), not called synchronously from the request — a create, redirect, or delete always returns immediately, whether or not the downstream service is up. Each task's HTTP client retries transient failures with backoff, and a circuit breaker fails fast (no network attempt) once the downstream service has been down for several consecutive calls, instead of piling up slow, doomed requests; Celery itself retries the whole task with backoff if it's down for longer than that. preview-service adds one more layer: a *per-domain* circuit breaker around the arbitrary destination sites it fetches, since one dead site shouldn't make previews of every other site fail too
 - **Nightly Cleanup** (url-service, Celery Beat): a scheduled job archives every URL past its `expires_at` (`is_archived=True`, deactivated, evicted from cache) once a day
-- **Structured Logging**: every service logs JSON lines to stdout, with 500-level errors (`django.request`) and security warnings (`django.security`, plus app-level warnings like a rejected internal-key or unauthorized write attempt) always captured
-- **Health Checks**: `GET /health/` on url-service, analytics-service, and preview-service verifies database (and, except for preview-service, Redis) connectivity, returning 503 if either is down
+- **Structured Logging**: every service logs JSON lines to both stdout and its own `logs/logs.json`, with 500-level errors (`django.request`) and security warnings (`django.security`, plus app-level warnings like a failed login attempt, a rejected internal-key, or an unauthorized write attempt) always captured
+- **Health Checks**: `GET /health/` on every service verifies database connectivity (url-service and analytics-service also check Redis), returning 503 if anything's down
 - **Database-per-service**: each service has its own Postgres container/database — no service can query another's tables
 - **API Documentation**: each service serves its own interactive Swagger UI
-- **Docker Support**: every service has its own Dockerfile/image and its own `docker-compose.yml`, and is started standalone — `cd services/<name> && docker compose up --build`
+- **API Gateway**: a single nginx gateway centralizes routing, JWT verification (`auth_request`), and CORS for all client traffic — see [API Gateway](#-api-gateway)
+- **Docker Support**: every service has its own Dockerfile/image; one `services/docker-compose.yml` builds and runs all of them plus the gateway together — `docker compose up --build` from `services/`
 
 ## 🛠️ Technology Stack
 
@@ -91,7 +161,7 @@ still fully usable on its own port with the gateway never started at all.
 - **Database**: PostgreSQL — a separate container per service
 - **Cache**: Redis (`django-redis`), used by url-service for URL lookups
 - **Background Tasks**: Celery, in url-service (nightly Celery Beat archive job) and analytics-service (write-behind click persistence) — each with its own Redis broker
-- **Logging**: structured JSON to stdout (`logging_utils.JSONFormatter`) in every service that runs Celery
+- **Logging**: structured JSON to stdout and to `logs/logs.json` (each service has its own `logging_utils.JSONFormatter`)
 - **API Documentation**: drf-spectacular (OpenAPI/Swagger) per service
 - **Server**: Gunicorn (production)
 - **Containerization**: Docker & Docker Compose
@@ -103,148 +173,126 @@ still fully usable on its own port with the gateway never started at all.
 
 ## 🔧 Setup Instructions
 
-There's no root-level `.env` and no root-level `docker-compose.yml` — each
-service under `services/` is entirely self-contained: its own `Dockerfile`,
-its own `docker-compose.yml`, and its own `.env`/`.env.example` (secrets
-included). Every service is started on its own, in its own terminal.
+There's no root-level `.env` — one `services/docker-compose.yml` is the
+only thing that ties the services together, and each service under
+`services/` still keeps its own `Dockerfile` and its own `.env`/`.env.example`
+(secrets included); `gateway/` additionally keeps its own
+`.env`/`.env.example` for the two values nginx's `envsubst` template needs
+(see [API Gateway](#-api-gateway)).
 
-`docker-compose.yml` (per service) only sets env vars Docker itself actually
-needs: the Postgres image's own `POSTGRES_DB`/`POSTGRES_USER`/
-`POSTGRES_PASSWORD`, explicitly as `KEY: ${KEY}` (nothing hardcoded — Compose
-resolves each from that service's own `.env` file in the same directory, its
-normal automatic lookup). The app container gets **no** `environment:` block
-at all — its `Dockerfile` already `COPY`s that service's own `.env` into the
-image, and Django reads it directly at startup (`Config/settings.py`), so
-Docker doesn't need to pass anything through separately.
-`POSTGRES_HOST`/`POSTGRES_PORT` (and, for url-service, `REDIS_URL`/
-`ANALYTICS_SERVICE_URL`/`CELERY_BROKER_URL`; for analytics-service,
-`CELERY_BROKER_URL`) are set in `.env` to the docker-network values directly
-(e.g. `POSTGRES_HOST=auth-db`), since these services are meant to run in
-Docker — see the note on running a service locally instead, in Option 2 below.
+`services/docker-compose.yml` only sets env vars Docker itself actually
+needs: each Postgres container gets `env_file: ./<name>/.env` (relative to
+`services/`, where the compose file itself lives) so Postgres reads its own
+`POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`
+straight out of it; the extra Django-specific vars in that same file are
+simply ignored by the `postgres` image). The app containers get **no**
+`environment:`/`env_file:` block at all — each one's own `Dockerfile`
+already `COPY`s that service's `.env` into the image, and Django reads it
+directly at startup (`Config/settings.py`), so Docker doesn't need to pass
+anything through separately. `POSTGRES_HOST`/`POSTGRES_PORT` (and, for
+url-service, `REDIS_URL`/`ANALYTICS_SERVICE_URL`/`CELERY_BROKER_URL`; for
+analytics-service, `CELERY_BROKER_URL`) are set in each `.env` to the
+docker-network values directly (e.g. `POSTGRES_HOST=auth-db`), since these
+services are meant to run in Docker — see the note on running a service
+locally instead, in Option 2 below.
 
-> Each service's app defaults to its own host port (`8001`/`8002`/`8003`)
-> whether started via Docker or `manage.py runserver`, and whether run via
-> their own `docker-compose.yml` or locally — so don't run the same service
-> both ways at once, but the three *different* services (auth, url, analytics)
-> are meant to all be running at the same time, each on its own port, for the
-> platform to actually work end to end.
+> Each service's app defaults to its own host port (`8001`/`8002`/`8003`,
+> bound to `127.0.0.1` only) whether started via Docker or `manage.py
+> runserver` — so don't run the same service both ways at once. Real client
+> traffic should go through the gateway on `:80` instead of any of these
+> directly (see [API Gateway](#-api-gateway)).
 
 ### Option 1: Run with Docker (Recommended)
 
-1. **Copy each service's env file** (only needed once — real `.env` files are
-   gitignored, so if they're already present you can skip this)
+1. **Copy each service's env file, plus the gateway's** (only needed once —
+   real `.env` files are gitignored, so if they're already present you can
+   skip this)
    ```bash
    cp services/auth-service/.env.example services/auth-service/.env
    cp services/url-service/.env.example services/url-service/.env
    cp services/analytics-service/.env.example services/analytics-service/.env
-   cp services/preview-service/.env.example services/preview-service/.env
+   cp gateway/.env.example gateway/.env
    ```
-   `JWT_SECRET_KEY` must be identical across auth-service, url-service, and
-   analytics-service (preview-service doesn't use JWTs at all — see [External
-   Service Integration: URL Preview](#-external-service-integration-url-preview));
-   `INTERNAL_API_KEY` must be identical across url-service, analytics-service,
-   and preview-service. The `.env.example` files already ship with matching
-   placeholder values — change them together if you change them at all.
+   `JWT_SECRET_KEY` must be identical across auth/url/analytics;
+   `INTERNAL_API_KEY` must be identical between url-service and
+   analytics-service; `INTERNAL_SERVICE_TOKEN` must be identical between
+   auth-service and the gateway. The `.env.example` files already ship with
+   matching placeholder values — change them together if you change them at
+   all.
 
-   Cross-service calls (url-service → analytics-service, url-service →
-   preview-service) need one more one-time step, regardless of whether you
-   ever start the gateway container itself (step 4 below) — the shared
-   network they run on:
+2. **Build and start the whole stack, from `services/`**
    ```bash
-   docker network create url_shortener_gateway   # one-time
+   cd services
+   docker compose up --build
    ```
+   This single command starts every service's own Postgres/Redis/Celery
+   worker (plus Celery Beat, for url-service's nightly archive job), all
+   three Django services, and the gateway. url-service still works fine if
+   analytics-service isn't running yet — it just can't reach it to report
+   clicks, and logs a warning each time instead of failing the redirect (see
+   `clients/analytics_client.py`).
+   `--build` matters here specifically because `.env` is baked into each
+   app's image at build time — if you edit a service's `.env` after already
+   building it once, run `docker compose up --build` again (not just `up`)
+   so the new values actually take effect.
 
-2. **Build and start each service, in its own terminal**
-   ```bash
-   cd services/auth-service && docker compose up --build
-   cd services/url-service && docker compose up --build
-   cd services/analytics-service && docker compose up --build
-   cd services/preview-service && docker compose up --build
-   ```
-   Each command also starts that service's own Postgres, Redis, and Celery
-   worker where it has one (plus Celery Beat, for url-service's nightly
-   archive job) — preview-service has none of these, just the app container
-   itself (see [External Service Integration: URL
-   Preview](#-external-service-integration-url-preview)). url-service still
-   works fine if analytics-service or preview-service isn't running yet —
-   click/delete events and preview fetches are queued via Celery
-   (`record_click_task`/`delete_click_events_task`/`fetch_url_preview_task`)
-   and retried with backoff until each is reachable, instead of failing the
-   redirect/create (see `clients/analytics_client.py`,
-   `clients/preview_client.py`, and `tasks.py`).
-   `--build` matters here specifically because `.env` is baked into the image
-   at build time — if you edit a service's `.env` after already building it
-   once, run `docker compose up --build` again (not just `up`) so the new
-   values actually take effect.
+3. **Access the platform through the gateway**
+   - Everything: http://localhost/ (short links, `/api/v1/...`)
+   - Docs: http://localhost/api/v1/docs/auth/, `/api/v1/docs/shortener/`, `/api/v1/docs/analytics/`
+   - Health check (gateway itself): http://localhost/health
 
-3. **Access each service**
+   Or, for local debugging only (bypasses the gateway's auth/CORS — see
+   [API Gateway](#-api-gateway)):
    - auth-service: http://localhost:8001/docs/
    - url-service: http://localhost:8002/docs/
    - analytics-service: http://localhost:8003/docs/
-   - preview-service: http://localhost:8004/docs/ (internal-only in practice — see [External Service Integration: URL Preview](#-external-service-integration-url-preview) — but its Swagger UI is still reachable directly for exploring the contract)
    - Django admin (per service): `:8001/admin/`, `:8002/admin/`, `:8003/admin/`
-   - Health check: `:8002/health/`, `:8003/health/`, `:8004/health/` — `200` if database (and, except for preview-service, Redis) is reachable, `503` otherwise
-
-4. **Optional: bring up the API gateway** — a single entry point on `:8080` for the three client-facing services (see [API Gateway](#-api-gateway) for the full routing table and resilience patterns)
-   ```bash
-   cp gateway/.env.example gateway/.env           # INTERNAL_SERVICE_TOKEN must match auth-service's
-   cd gateway && docker compose up -d
-   ```
-   Each service's own `docker-compose.yml` already joins the
-   `url_shortener_gateway` network from step 1 under a fixed alias (`auth`,
-   `shortener`, `analytics`, `preview`) once it's up. Skipping this step
-   (the gateway container itself) is fine; nothing above depends on it —
-   only the network from step 1 does.
+   - Health check (every service): `:8001/health/`, `:8002/health/`, `:8003/health/` — `200` if the database (and, for url-service/analytics-service, Redis) is reachable, `503` otherwise
 
 ### Option 2: Run a Service Locally (Without Docker)
 
 Each service under `services/` is a self-contained Django project, using the
 same `.env` file from Option 1 above — but that file's `POSTGRES_HOST`
 (`auth-db`/`url-db`/`analytics-db`) and, for url-service, `REDIS_URL` /
-`ANALYTICS_SERVICE_URL` / `PREVIEW_SERVICE_URL` / `CELERY_BROKER_URL` (and
-for analytics-service, `CELERY_BROKER_URL`), are docker-network addresses,
-only resolvable from inside Docker's network. Running `manage.py`/`celery`
-directly on your machine instead, override them at the shell first (they
-take priority over `.env` without editing it):
+`ANALYTICS_SERVICE_URL` / `CELERY_BROKER_URL` (and for analytics-service,
+`CELERY_BROKER_URL`), are docker-network addresses, only resolvable from
+inside Docker's network. Running `manage.py`/`celery` directly on your
+machine instead, override them at the shell first (they take priority over
+`.env` without editing it):
 
 ```bash
 POSTGRES_HOST=localhost POSTGRES_PORT=5434 python manage.py runserver          # auth-service
 
 # url-service
-POSTGRES_HOST=localhost POSTGRES_PORT=5436 REDIS_URL=redis://127.0.0.1:6380/1 CELERY_BROKER_URL=redis://127.0.0.1:6380/2 ANALYTICS_SERVICE_URL=http://localhost:8003 PREVIEW_SERVICE_URL=http://localhost:8004 python manage.py runserver
-POSTGRES_HOST=localhost POSTGRES_PORT=5436 CELERY_BROKER_URL=redis://127.0.0.1:6380/2 ANALYTICS_SERVICE_URL=http://localhost:8003 PREVIEW_SERVICE_URL=http://localhost:8004 celery -A Config worker -l info    # + separate terminal for Beat: celery -A Config beat -l info
+POSTGRES_HOST=localhost POSTGRES_PORT=5436 REDIS_URL=redis://127.0.0.1:6380/1 CELERY_BROKER_URL=redis://127.0.0.1:6380/2 python manage.py runserver
+POSTGRES_HOST=localhost POSTGRES_PORT=5436 CELERY_BROKER_URL=redis://127.0.0.1:6380/2 celery -A Config worker -l info    # + separate terminal for Beat: celery -A Config beat -l info
 
 # analytics-service
 POSTGRES_HOST=localhost POSTGRES_PORT=5435 CELERY_BROKER_URL=redis://127.0.0.1:6381/0 python manage.py runserver
 POSTGRES_HOST=localhost POSTGRES_PORT=5435 CELERY_BROKER_URL=redis://127.0.0.1:6381/0 celery -A Config worker -l info
-
-# preview-service — no database/Redis override needed at all: it uses
-# SQLite (no Docker-network address to resolve) and has no Celery worker.
-python manage.py runserver
 ```
 
 Skipping the Celery worker still leaves the app itself fully usable — url-service's
-nightly archive job and preview fetches just never run (they stay queued),
-and analytics-service's `POST /api/v1/events/click/` enqueues clicks that
-sit in Redis unprocessed until a worker is started.
+nightly archive job just never runs, and analytics-service's `POST /api/v1/events/click/`
+enqueues clicks that sit in Redis unprocessed until a worker is started.
 
 1. **Create a virtual environment per service** (dependencies differ slightly
    per service, so don't share one venv across them)
    ```bash
-   cd services/auth-service   # or url-service / analytics-service / preview-service
+   cd services/auth-service   # or url-service / analytics-service
    python -m venv venv
    venv\Scripts\activate  # Windows
    pip install -r requirements.txt
    ```
 
-2. **Start that service's own database and Redis** — using that service's own
-   `docker-compose.yml` is easiest, since it starts just the infra without
-   also starting the Django app in a container (preview-service has neither,
-   so there's nothing to start for it — skip straight to step 3):
+2. **Start just the infra containers you need**, from `services/` —
+   `services/docker-compose.yml` covers this too, since each database/redis
+   is its own compose service:
    ```bash
-   docker compose up -d auth-db                # from services/auth-service/
-   docker compose up -d url-db redis            # from services/url-service/
-   docker compose up -d analytics-db redis      # from services/analytics-service/
+   cd services
+   docker compose up -d auth-db
+   docker compose up -d url-db url-redis
+   docker compose up -d analytics-db analytics-redis
    ```
    Each db container is exposed on the host — `auth-db` on `5434`, `url-db` on
    `5436`, `analytics-db` on `5435` — and each service's own Redis is exposed
@@ -260,290 +308,9 @@ sit in Redis unprocessed until a worker is started.
    ```
    With no addrport argument, `runserver` normally falls back to `8000` for
    every service — `manage.py` here instead defaults it to that service's own
-   `PORT` from `.env` (`8001`/`8002`/`8003`/`8004`), so running all four
-   locally at once doesn't collide. Pass an addrport explicitly (e.g.
-   `runserver 9000`) to override it.
-
-## 🚪 API Gateway
-
-An optional nginx gateway (`gateway/`) fronts the three client-facing
-services on a single port, `:8080` (preview-service is internal-only — see
-[External Service Integration: URL
-Preview](#-external-service-integration-url-preview) — so it's on the same
-network for url-service to reach it, but the gateway never routes client
-traffic to it). It's a separate `docker-compose.yml`, joined to the same
-`url_shortener_gateway` external network each service's own compose file
-already declares — bring it up (or not) independently of the services
-themselves; nothing above requires it.
-
-**Routing table** (client-facing; service-to-service traffic bypasses the
-gateway entirely and calls containers directly):
-
-| Path prefix                      | Routed to          | Notes                                                        |
-|-----------------------------------|---------------------|---------------------------------------------------------------|
-| `/api/v1/auth/*`                  | auth-service        | Rate-limited tighter than everything else (`auth_limit`)     |
-| `/api/v1/urls/*`                  | url-service         | Requires a valid Bearer JWT (see below)                       |
-| `/api/v1/analytics/*`             | analytics-service   | Requires a valid Bearer JWT                                    |
-| `/api/v1/docs/<service>/`, `/api/v1/schema/<service>/` | that service | Swagger UI/schema, disambiguated per service              |
-| `/admin/<service>/`               | that service        | Django admin, disambiguated per service                       |
-| `/health/<service>/`              | url-service/analytics-service/preview-service | Same 200/503 contract as calling the service directly |
-| `/api/v1/*`, `/`                  | url-service         | Public JSON resolve and the short link itself (e.g. `/abc123`) |
-| `/api/v1/internal/*`, `/internal/*`, `/api/v1/preview/` | — (404) | Internal-only endpoints are never reachable through the gateway — preview-service is called by url-service directly, container-to-container, never through here |
-
-**Centralized authentication**: rather than every service verifying JWTs
-independently at the edge, protected locations (`/api/v1/urls/`,
-`/api/v1/analytics/`) use nginx's `auth_request` to call auth-service's
-internal token-validation endpoint once per request. auth-service checks the
-JWT and an `X-Internal-Token` (proving the call came from the gateway, not
-the public internet), then returns the decoded identity as response headers
-(`X-User-Id`, `X-Username`, `X-User-Tier`, `X-User-Is-Premium`), which the
-gateway forwards on to url-service/analytics-service as trusted request
-headers. A 401/403 from that check short-circuits the request before it ever
-reaches url-service or analytics-service.
-
-**Resilience patterns at the gateway**:
-- **Rate limiting** — `limit_req_zone` cap traffic per client IP before it
-  reaches a backend at all: 5 req/s (burst 10) on auth endpoints, 20 req/s
-  (burst 40) everywhere else client-facing. Exceeding it gets a `429`, not a
-  slow backend response.
-- **Fail-fast timeouts** — `proxy_connect_timeout`/`proxy_send_timeout`/
-  `proxy_read_timeout` keep a hung or unreachable backend from tying up a
-  gateway connection indefinitely.
-
-See resilient HTTP communication and service decoupling below for the
-patterns used *between* services (url-service → analytics-service and
-preview-service), independent of whether the gateway is running at all.
-
-### API Versioning
-
-Every client-facing endpoint on every service is namespaced under
-`/api/v1/...` — there's no bare, unversioned route anywhere in this API (see
-the [routing table](#-api-gateway) above and [API Endpoints](#-api-endpoints)
-below). A future breaking change gets its own `/api/v2/...` prefix rather
-than mutating `v1`'s contract out from under existing callers; the gateway's
-path-based routing (each `location` block matches on the full
-`/api/v1/...` prefix) would extend to a second version with an equivalent
-set of `/api/v2/...` locations, routed however that version's endpoints
-need to be split across services — old and new versions can run side by
-side indefinitely.
-
-### CORS for a Frontend (e.g. React)
-
-Every service already has `django-cors-headers` installed and configured
-(`CORS_ALLOW_ALL_ORIGINS`/`CORS_ALLOWED_ORIGINS` in each service's `.env` —
-see each service's Setup Instructions above), so no new code is needed to
-call this API from a browser-based frontend — only correct configuration.
-The one subtlety worth calling out: **the gateway itself does not add CORS
-headers** — it's a plain reverse proxy, and passes the browser's `Origin`
-header straight through unchanged. The response's `Access-Control-Allow-*`
-headers are actually added by whichever Django service ends up handling that
-specific request (auth-service for `/api/v1/auth/*`, url-service for
-`/api/v1/urls/*`, etc.) — so **every** service the frontend talks to, not
-just one of them, needs the frontend's origin allowed, even though the
-frontend only ever talks to the gateway's single `:8080` origin.
-
-For a React app running on its usual dev-server origin, in each of
-auth-service/url-service/analytics-service's `.env`:
-```bash
-CORS_ALLOW_ALL_ORIGINS=False
-CORS_ALLOWED_ORIGINS=http://localhost:3000
-```
-(`CORS_ALLOW_ALL_ORIGINS=True`, the default in `DEBUG` mode, already works
-for local development without this — it's only for a production frontend
-origin that this needs to be set explicitly.) No further configuration is
-needed for the `Authorization` header specifically — `django-cors-headers`
-allows it by default — and no `CORS_ALLOW_CREDENTIALS` setting is needed
-either, since auth here is a Bearer token in a header, not a cookie.
-
-### Running it
-
-```bash
-docker network create url_shortener_gateway   # one-time
-cp gateway/.env.example gateway/.env           # INTERNAL_SERVICE_TOKEN must match auth-service's
-cd gateway && docker compose up -d
-```
-
-Then use `http://localhost:8080` in place of the individual `:8001`/`:8002`/
-`:8003` ports for anything client-facing — e.g. `POST
-http://localhost:8080/api/v1/auth/login/` instead of `:8001/api/v1/auth/login/`.
-
-## 🔁 Resilient HTTP Communication & Service Decoupling
-
-url-service is the one place inter-service HTTP calls happen at runtime — it
-reports every redirect (and cascades every delete) to analytics-service, and
-asks preview-service to fetch a destination page's preview on every create.
-In both cases, rather than a synchronous call in the request path, the view
-hands the work off to a Celery task
-(`record_click_task`/`delete_click_events_task`/`fetch_url_preview_task` in
-`url_shortener/tasks.py`), queued on url-service's own Redis broker. Every
-one of those tasks shares the same pattern, implemented once in
-`url_shortener/clients/resilience.py` and reused by both
-`clients/analytics_client.py` and `clients/preview_client.py`:
-
-- **Decoupled from the downstream service's availability**: a create,
-  redirect, or delete always returns immediately — success doesn't depend on
-  analytics-service or preview-service being reachable, or even running, at
-  that instant. If either is down, its task just sits in the queue until a
-  worker can deliver it.
-- **Retries at two levels**: the HTTP client itself retries a connection
-  failure or 5xx response up to 3 times with exponential backoff before
-  giving up on that attempt (`resilience.build_retrying_session`); if the
-  whole attempt still fails, the *task* is retried by Celery (up to 5 times,
-  with backoff and jitter) — so a blip that clears up in seconds is absorbed
-  by the HTTP-level retry, while a longer outage is absorbed by the
-  task-level retry, without ever blocking the original request either way.
-- **Circuit breaker**: after 5 consecutive failures reaching a downstream
-  service at all, its client stops attempting the network call for 30
-  seconds (raising immediately instead — `resilience.CircuitBreaker`), so a
-  sustained outage doesn't pile up slow, doomed connection attempts — then
-  lets a single trial call through to check whether it has recovered.
-  preview-service additionally runs its own, separate circuit breaker keyed
-  *per destination domain* (see [External Service Integration: URL
-  Preview](#-external-service-integration-url-preview)) — a distinct
-  problem from preview-service itself being down.
-
-None of this is visible to a caller of the create/redirect/delete endpoints
-— it's purely about a downstream dependency's uptime never becoming
-url-service's problem.
-
-## 🔎 External Service Integration: URL Preview
-
-When a URL is created, url-service doesn't just store it — it also fetches
-the destination page's `<title>`, meta-description, and favicon, and stores
-those on the same `Url` row (the `title`/`description`/`favicon` fields
-already used for owner-supplied metadata — see [Database
-Schema](#️-database-schema)). Fetching an arbitrary third-party page is
-exactly the kind of unreliable external dependency the resilience patterns
-above exist for, so the actual fetch is delegated to a separate, minimal
-service, and never allowed to block URL creation.
-
-**preview-service** (`services/preview-service/`) is a small, stateless
-Django app with a single internal endpoint, `POST /api/v1/preview/`
-(`X-Internal-Key` gated, same contract as analytics-service's internal
-endpoint — never reachable through the gateway, see [API
-Gateway](#-api-gateway)):
-1. url-service's `fetch_url_preview_task` (queued right after `Url.objects.create(...)`
-   in `UrlListCreateView.post`) calls preview-service via
-   `url_shortener/clients/preview_client.py`.
-2. preview-service fetches the destination page itself
-   (`preview/fetcher.py`) — with its own retrying session (a transient
-   connection failure or 5xx is retried 3 times with backoff) — reads at
-   most 1MB of the response (a page's `<head>` is always near the top), and
-   parses out the title, `<meta name="description">` (falling back to
-   `og:description`), and the best available `<link rel="icon">` (falling
-   back to `/favicon.ico`) with BeautifulSoup.
-3. **Per-domain circuit breaker (bonus)**: if the *same domain* fails 3
-   times in a row, preview-service stops even attempting to fetch it for 60
-   seconds, returning `502` immediately instead — deliberately scoped to one
-   domain at a time, so a single dead site being retried over and over
-   doesn't affect previews for every other site being requested at the same
-   time.
-4. url-service's task fills in whichever of `title`/`description`/`favicon`
-   are still blank on that `Url` — an owner-supplied value on create always
-   wins and is never overwritten.
-
-If the destination site is down, or preview-service itself is unreachable,
-URL creation still succeeds immediately with those three fields left
-`null` — they simply stay `null` until a later retry succeeds, if it ever
-does. Nothing about this feature can turn into a reason `POST /api/v1/urls/`
-fails or hangs.
-
-## 🧭 Putting It All Together: A Request's Journey
-
-The three sections above (gateway, resilience/decoupling, preview) each
-describe one piece in isolation. This walks through two complete, concrete
-requests — start to finish, container to container — to show exactly how
-those pieces connect. Both assume the gateway is running (see [API
-Gateway](#-api-gateway)); without it, skip straight to step 2 and call
-url-service's own `:8002` directly instead — every downstream step is
-identical either way.
-
-### Walkthrough A — `POST http://localhost:8080/api/v1/urls/`
-
-1. **nginx (gateway, `:8080`) receives the request.** Its `location
-   /api/v1/urls/` block matches. Before doing anything else, it applies
-   `limit_req zone=api_limit` (rejects with `429` if this client IP is
-   over 20 req/s) and fires an internal subrequest to `/internal/verify`.
-2. **`/internal/verify` → auth-service.** nginx's `auth_request` forwards
-   the caller's `Authorization: Bearer <token>` header, plus its own
-   `X-Internal-Token` (proving this call came from the gateway itself), to
-   auth-service's `GET /api/v1/auth/internal/token/validate/`. auth-service
-   checks both; a failure here (bad token, bad internal token, expired
-   token) returns `401`/`403`, which nginx turns into the gateway's own
-   `401` response — url-service is **never reached** for an unauthenticated
-   or invalid request.
-3. **Identity flows back as headers.** On success, auth-service's response
-   carries `X-User-Id`/`X-Username`/`X-User-Tier`/`X-User-Is-Premium`; nginx
-   captures those (`auth_request_set`) and re-sends them as request headers
-   on the *original* request it now proxies to url-service — url-service
-   trusts them as-is, the same way it would trust claims it decoded from
-   the JWT itself if called directly (no gateway in the path).
-4. **url-service (`UrlListCreateView.post`) does the actual work**:
-   validates the payload, checks the Free-tier 10-active-URL cap, generates
-   a short code, and `Url.objects.create(...)`s the row in `url_db`. It
-   caches the short_code → URL/owner lookup in Redis, then calls
-   `fetch_url_preview_task.delay(url_obj.id)` — this returns instantly
-   (it publishes one message to url-service's own Redis broker; it does
-   **not** wait for preview-service). The view returns `201` right away,
-   `title`/`description`/`favicon` still `null` in the response body.
-5. **Off the request path, a Celery worker in url-service's own container**
-   picks up `fetch_url_preview_task` and calls `preview_client.fetch_preview(...)`,
-   which:
-   - checks its own circuit breaker for preview-service first (skips the
-     network call entirely, raising immediately, if preview-service has
-     failed 5 times in a row in the last 30s);
-   - otherwise `POST`s to preview-service directly, container-to-container
-     — `http://preview:8000/api/v1/preview/` — **never through the gateway**
-     (the gateway 404s that path on purpose; see [API Gateway](#-api-gateway)'s
-     routing table);
-   - retries a connection failure or 5xx up to 3 times with backoff before
-     giving up on this attempt (`resilience.build_retrying_session`).
-6. **preview-service receives the internal call**, checks `X-Internal-Key`,
-   then fetches the *actual destination site* (e.g. `https://example.com`)
-   with its own retrying session and its own circuit breaker — this one
-   keyed **per destination domain**, completely separate from url-service's
-   circuit breaker on preview-service itself. It parses the HTML and
-   returns `{title, description, favicon}` as JSON (or `502` if the fetch
-   ultimately failed).
-7. **Back in url-service's task**: on success, it updates the `Url` row —
-   only the fields the owner left blank — and the change is visible on the
-   next `GET /api/v1/urls/{short_code}/`. On failure, the task itself
-   raises, and Celery retries the *whole task* later (up to 5 times, with
-   backoff and jitter) — completely independent of, and layered on top of,
-   the HTTP-level retry in step 5. If every retry is exhausted, the fields
-   just stay `null` forever; nothing else about the URL is affected.
-
-### Walkthrough B — `GET http://localhost:8080/{short_code}/`
-
-1. **Gateway**: matches the catch-all `location /` block (rate-limited,
-   no `auth_request` — this route is intentionally public), and proxies
-   straight to url-service.
-2. **url-service (`RedirectUrlView.get`)**: resolves the code (cache first,
-   `url_db` on a miss), 404s if inactive/expired, atomically increments
-   `click_count`, and immediately returns `302 Location: <original_url>` —
-   the browser is redirected before anything below this line has even
-   necessarily started running.
-3. **`record_click_task.delay(...)`** is queued (same non-blocking
-   `.delay()` as Walkthrough A) with the short code, owner id, and
-   request metadata (referrer, user-agent, IP).
-4. **url-service's Celery worker** picks it up, geolocates the IP via a
-   free public API (best-effort — swallows its own failures, since a
-   missing city/country was never worth blocking a click over), then
-   calls `analytics_client.record_click(...)` — same
-   retry/circuit-breaker/task-retry stack as Walkthrough A, steps 5–7,
-   just aimed at analytics-service (`http://analytics:8000`) instead of
-   preview-service.
-5. **analytics-service** checks `X-Internal-Key`, validates the payload,
-   and hands the actual database write to *its own* Celery worker
-   (`track_click_task.delay(...)`) — a second, independent write-behind
-   step, so analytics-service's own view never blocks on a database write
-   either. The click becomes visible via `GET
-   /api/v1/analytics/urls/{short_code}/` once that write lands.
-
-Every failure mode in both walkthroughs — analytics-service down,
-preview-service down, the destination site down, even the database
-briefly unreachable — degrades to "the data arrives late, or never,"
-never to "the user-facing request fails or hangs."
+   `PORT` from `.env` (`8001`/`8002`/`8003`), so running all three locally at
+   once doesn't collide. Pass an addrport explicitly (e.g. `runserver 9000`)
+   to override it.
 
 ## 🔑 Authenticating Requests
 
@@ -610,12 +377,7 @@ stock `JWTAuthentication` class, not a subclass of it.
 ```
 Free tier is capped at 10 **active** URLs (a 403 past that — deactivated ones
 don't count); `custom_alias` requires Premium/Admin. `title`, `description`,
-`favicon`, `is_active`, `expires_at`, and `tags` are all optional — any of
-`title`/`description`/`favicon` you don't supply are fetched from the
-destination page in the background (see [External Service Integration: URL
-Preview](#-external-service-integration-url-preview)) and populate a moment
-after this response, which is why they're `null` below even though the
-request above didn't set `is_active`/`expires_at` either.
+`favicon`, `is_active`, `expires_at`, and `tags` are all optional.
 **Response** (201):
 ```json
 {
@@ -672,19 +434,16 @@ else).
 #### 9. Delete a Short URL — `DELETE /api/v1/urls/{short_code}/` (requires `Authorization: Bearer <access-token>`)
 Only that URL's owner, or a staff/admin user, may do this — anyone else gets
 a **403 Forbidden**. Hard-deletes the row and cascades to analytics-service,
-removing that code's click history there too, via a queued, retried Celery
-task rather than a synchronous call (see [Resilient HTTP Communication &
-Service Decoupling](#-resilient-http-communication--service-decoupling) —
-see also [Role-Based Access](#-role-based-access)).
+removing that code's click history there too (fire-and-forget, in the
+background — see [Role-Based Access](#-role-based-access)).
 **Response** (204): empty body.
 
 #### 10. Redirect — `GET /{short_code}/` (or a `custom_alias`)
 Paste directly into a browser: http://localhost:8002/abc123/ → 302 to the
 original URL. Returns 404 if inactive or expired. Every successful redirect
-increments `click_count` and queues a click event (with best-effort
-geolocation) to analytics-service via Celery, so it never delays the
-redirect itself and never gets lost if analytics-service is temporarily
-down.
+increments `click_count` and reports a click event (with best-effort
+geolocation) to analytics-service — both happen in a background thread, so
+they never delay the redirect itself.
 
 ### analytics-service (`:8003`, requires `Authorization: Bearer <access-token>`)
 
@@ -720,12 +479,13 @@ to the database) and returns 201 immediately; `DELETE` (body:
 `{"short_codes": [...]}`) cascade-deletes click history for those codes,
 called when url-service deletes a URL.
 
-#### 15. Health Check — `GET /health/` (url-service, analytics-service)
+#### 15. Health Check — `GET /health/` (every service)
 
-No authentication required. Verifies the database and Redis are both
-reachable and returns `{"status": "ok", "checks": {"database": true, "redis": true}}`
-(200), or `{"status": "unavailable", ...}` with whichever check(s) failed set
-to `false` (503) otherwise.
+No authentication required. url-service and analytics-service verify both
+database and Redis connectivity; auth-service (no cache/broker of its own)
+checks just the database. Returns `{"status": "ok", "checks": {"database": true, "redis": true}}`
+(200, `redis` omitted for auth-service), or `{"status": "unavailable", ...}`
+with whichever check(s) failed set to `false` (503) otherwise.
 
 ## 🔐 Role-Based Access
 
@@ -748,10 +508,10 @@ value they were issued with until they expire).
 
 Deleting a URL you own (or any URL, as admin) hard-deletes it in `url_db`
 **and** cascades to analytics-service, removing that code's click history
-there too — the delete itself runs synchronously, but the cascade is queued
-as a Celery task (`delete_click_events_task`), so a slow, unreachable, or
-temporarily-down analytics-service never delays the 204 response and never
-loses the delete — the task just retries until it lands.
+there too — both the delete and the cascade call run synchronously in the
+request/response cycle except the actual HTTP call to analytics-service,
+which fires from a background thread so a slow/unreachable analytics-service
+never delays the 204 response.
 
 ### Tiered Permissions
 
@@ -799,7 +559,6 @@ Each service has its own test suite:
 cd services/auth-service && python manage.py test
 cd services/url-service && python manage.py test
 cd services/analytics-service && python manage.py test
-cd services/preview-service && python manage.py test
 ```
 
 ## 🗄️ Database Schema
@@ -835,7 +594,7 @@ Plus everything `AbstractUser` already provides (`username`, `password`,
 | `expires_at`                      | `DateTimeField(null=True)`              | Past this timestamp, the link 404s on resolve/redirect        |
 | `is_archived`                     | `BooleanField(default=False)`           | Set by the nightly `archive_expired_urls` Celery Beat task, not the owner |
 | `archived_at`                     | `DateTimeField(null=True)`              | When the archive task swept this URL, if it has been          |
-| `title`, `description`, `favicon` | `CharField(null=True)`                  | Owner-supplied on create, or auto-fetched from the destination page by preview-service otherwise — see [External Service Integration: URL Preview](#-external-service-integration-url-preview) |
+| `title`, `description`, `favicon` | `CharField(null=True)`                  | User-supplied metadata, not auto-fetched from the destination |
 | `click_count`                     | `PositiveIntegerField(default=0)`       | Incremented atomically by url-service on every redirect       |
 | `tags`                            | `ManyToManyField(Tag)`                  | Optional, set via the `tags` field on create/update           |
 | `created_at`                      | `DateTimeField(auto_now_add=True)`      | --                                                            |
@@ -865,15 +624,23 @@ Plus everything `AbstractUser` already provides (`username`, `password`,
 
 ```
 Enterprise-Grade_URL_Shortener/
+├── gateway/                    # not a services/<name>/ Django app — no Dockerfile, just nginx:alpine + config
+│   ├── nginx.conf              # routing, auth_request-based centralized JWT auth, CORS (envsubst template)
+│   ├── .env.example            # INTERNAL_SERVICE_TOKEN, CORS_ALLOWED_ORIGIN
+│   └── README.md               # full gateway design notes
 ├── services/
+│   ├── docker-compose.yml      # the one orchestration file: every service + gateway
 │   ├── auth-service/
 │   │   ├── Config/                # settings (AUTH_USER_MODEL), urls, wsgi, asgi
 │   │   ├── accounts/               # User(AbstractUser): email/is_premium/tier
 │   │   │   ├── models.py          # User model, its own migrations
 │   │   │   ├── admin.py           # UserAdmin exposing tier/is_premium
-│   │   │   └── api/               # register/login/refresh views (is_staff/tier JWT claims), serializers, urls
-│   │   ├── Dockerfile              # this service's image
-│   │   ├── docker-compose.yml      # auth-db + auth-service — runs standalone
+│   │   │   ├── health.py          # GET /health/ — database connectivity
+│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
+│   │   │   ├── profiling.py       # ProfilingMiddleware (?profile=1) + @profile_function/@profile_lines decorators
+│   │   │   └── api/               # register/login/refresh views (is_staff/tier JWT claims, failed-login warnings), serializers, urls
+│   │   ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
+│   │   ├── Dockerfile              # this service's image (no docker-compose.yml here — see services/docker-compose.yml)
 │   │   ├── requirements.txt, manage.py, .env.example
 │   │   └── ...
 │   ├── url-service/
@@ -881,51 +648,37 @@ Enterprise-Grade_URL_Shortener/
 │   │   ├── url_shortener/
 │   │   │   ├── models.py          # Url (owner_id/owner_email — no cross-service FK; custom_alias, tags, expiry, click_count, is_archived/archived_at), Tag
 │   │   │   ├── caching.py         # cache_key/cache_url/invalidate_cache — shared by api/views.py and tasks.py
-│   │   │   ├── tasks.py           # archive_expired_urls (Celery Beat) + record_click_task/delete_click_events_task/fetch_url_preview_task (queued, retried click/delete/preview reporting)
+│   │   │   ├── tasks.py           # archive_expired_urls — nightly Celery Beat cleanup job
 │   │   │   ├── health.py          # GET /health/ — database + Redis connectivity
-│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout logging
+│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
+│   │   │   ├── profiling.py       # ProfilingMiddleware (?profile=1) + @profile_function/@profile_lines decorators
 │   │   │   ├── security/authentication.py  # StatelessJWTAuthentication (reads is_staff/tier claims) + its Swagger "Authorize" scheme
-│   │   │   ├── clients/resilience.py        # CircuitBreaker + build_retrying_session — shared by every client below
-│   │   │   ├── clients/analytics_client.py  # resilient click reporting + ip-api.com geolocation + cascade-delete
-│   │   │   ├── clients/preview_client.py    # resilient call to preview-service for a destination page's title/description/favicon
-│   │   │   └── api/               # views (short-code/alias gen, Redis cache, redirect+click_count), serializers, permissions (IsOwnerOrReadOnly), throttling (TieredUserRateThrottle), pagination (UrlPagination), urls
-│   │   ├── Dockerfile
-│   │   ├── docker-compose.yml      # url-db + redis + url-service + celery-worker + celery-beat — runs standalone
+│   │   │   ├── clients/analytics_client.py  # fire-and-forget click reporting + ip-api.com geolocation + cascade-delete
+│   │   │   └── api/               # views (short-code/alias gen, Redis cache, redirect+click_count, background threading), serializers, permissions (IsOwnerOrReadOnly), throttling (TieredUserRateThrottle), pagination (UrlPagination), urls
+│   │   ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
+│   │   ├── Dockerfile              # no docker-compose.yml here — see services/docker-compose.yml
 │   │   └── requirements.txt, manage.py, .env.example
-│   ├── analytics-service/
-│   │   ├── Config/                # settings, urls, wsgi, asgi, celery.py (Celery app)
-│   │   ├── analytics/
-│   │   │   ├── models.py          # ClickEvent (city/country, short_code sized for a custom_alias)
-│   │   │   ├── tasks.py           # track_click_task — write-behind ClickEvent persistence
-│   │   │   ├── health.py          # GET /health/ — database + Redis connectivity
-│   │   │   ├── logging_utils.py   # JSONFormatter for structured stdout logging
-│   │   │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
-│   │   │   └── api/                # click-record/cascade-delete + stats + detailed-analytics views, permissions (IsInternalService, IsPremiumOrAdmin)
-│   │   ├── Dockerfile
-│   │   ├── docker-compose.yml      # analytics-db + redis + analytics-service + celery-worker — runs standalone
-│   │   └── requirements.txt, manage.py, .env.example
-│   └── preview-service/             # stateless — no models, no Celery, no Postgres/Redis of its own
-│       ├── Config/                 # settings (SQLite), urls, wsgi, asgi — no celery.py
-│       ├── preview/
-│       │   ├── fetcher.py          # fetch_preview — retrying session + per-domain circuit breaker around the arbitrary destination fetch
-│       │   ├── permissions.py      # IsInternalService — same contract as analytics-service's
-│       │   ├── health.py           # GET /health/ — database connectivity only (no Redis)
-│       │   ├── logging_utils.py    # JSONFormatter for structured stdout logging
-│       │   └── views.py            # PreviewView — POST /api/v1/preview/, internal-only
-│       ├── Dockerfile
-│       ├── docker-compose.yml      # single container, no db/redis — runs standalone
+│   └── analytics-service/
+│       ├── Config/                # settings, urls, wsgi, asgi, celery.py (Celery app)
+│       ├── analytics/
+│       │   ├── models.py          # ClickEvent (city/country, short_code sized for a custom_alias)
+│       │   ├── tasks.py           # track_click_task — write-behind ClickEvent persistence
+│       │   ├── health.py          # GET /health/ — database + Redis connectivity
+│       │   ├── logging_utils.py   # JSONFormatter for structured stdout + logs/logs.json logging
+│       │   ├── profiling.py       # ProfilingMiddleware (?profile=1) + @profile_function/@profile_lines decorators
+│       │   ├── authentication.py  # StatelessJWTAuthentication + its Swagger "Authorize" scheme
+│       │   └── api/                # click-record/cascade-delete + stats + detailed-analytics views, permissions (IsInternalService, IsPremiumOrAdmin)
+│       ├── gunicorn.conf.py        # workers/threads/timeouts/recycling — tunable via this service's .env
+│       ├── Dockerfile              # no docker-compose.yml here — see services/docker-compose.yml
 │       └── requirements.txt, manage.py, .env.example
-├── gateway/                         # optional nginx API gateway — see API Gateway section
-│   ├── server.conf                  # routing, auth_request delegation, rate limiting, timeouts (mounted as default.conf.template)
-│   ├── docker-compose.yml           # single nginx container — runs standalone, joins url_shortener_gateway
-│   └── .env.example                 # INTERNAL_SERVICE_TOKEN, shared with auth-service
 └── README.md
 ```
 
-There's deliberately no root-level `Dockerfile` or top-level orchestration
-file spanning all of `services/` — each service is entirely self-contained
-under its own `services/<name>/` directory. `gateway/` is the one addition
-that spans them, and it's still optional and independently started.
+There's deliberately no per-service `docker-compose.yml` or root-level
+`Dockerfile`/`.env` — `services/docker-compose.yml` is the one place that
+ties every service and the gateway together; each service otherwise stays
+self-contained (its own `Dockerfile`, `.env`/`.env.example`) under its own
+`services/<name>/` directory.
 
 ## 🎯 API Endpoints
 
@@ -946,49 +699,35 @@ that spans them, and it's still optional and independently started.
 | analytics | GET    | `/api/v1/analytics/{short_code}/`      | Premium/Admin                        | Time-series + geo-location breakdown                        |
 | analytics | POST   | `/api/v1/events/click/`                | Internal key                         | Called by url-service only (write-behind via Celery)        |
 | analytics | DELETE | `/api/v1/events/click/`                | Internal key                         | Cascade-delete click history (called by url-service)        |
-| preview   | POST   | `/api/v1/preview/`                     | Internal key                         | Fetches a destination page's title/description/favicon (called by url-service only, never through the gateway) |
 | each      | GET    | `/api/schema/`, `/docs/`               | No                                   | OpenAPI schema / Swagger UI                                 |
 | each      | GET    | `/admin/`                              | Session (that service's local admin) | Django admin                                                |
-| url, analytics, preview | GET | `/health/`                  | No                                   | Database (+ Redis, except preview) connectivity check       |
+| each      | GET    | `/health/`                             | No                                   | Database connectivity check (+ Redis, for url/analytics)    |
 
 ## 🐛 Troubleshooting
 
 ### Port Already in Use
-Each service's host port is set in its own `docker-compose.yml` (`8001`/`8002`/
-`8003`/`8004` for the apps, `5434`/`5436`/`5435` for their databases, `6380` for
-url-service's Redis, `6381` for analytics-service's Redis) — change the left
-side of the `ports:` mapping for the service that conflicts. Only the
-host-side number matters for this; services always talk to each other over
-the internal Docker network on the container's standard port regardless of
-how it's exposed to the host.
+Every host port is set in `services/docker-compose.yml` (`80` for the
+gateway, `8001`/`8002`/`8003` for the apps, `5434`/`5436`/`5435` for their
+databases, `6380` for url-service's Redis, `6381` for analytics-service's
+Redis) — change the left side of the `ports:` mapping for the service that
+conflicts. Only the host-side number matters for this; services always talk
+to each other over the internal Docker network on the container's standard
+port regardless of how it's exposed to the host.
 
 ### 401s between services / tokens not verifying
-`JWT_SECRET_KEY` must be **identical** across all three services' env. If you
-change it, restart every service (docker-compose reads env at container start).
+`JWT_SECRET_KEY` must be **identical** across all three services' env, and
+(if using the gateway) `INTERNAL_SERVICE_TOKEN` must match between
+auth-service and `gateway/.env`. If you change either, restart the
+affected containers (`docker compose up -d --build <service>` from the repo
+root — env is only read at container start).
 
-### Click events not showing up in analytics-service (or a preview never populates)
-url-service never blocks a redirect, delete, or create on the downstream
-service being reachable — the work is queued as a Celery task and retried
-with backoff instead (see [Resilient HTTP Communication & Service
-Decoupling](#-resilient-http-communication--service-decoupling)). Check:
-- url-service's `celery-worker` container is actually running — without it,
-  queued tasks just sit in Redis forever, never delivered.
-- url-service's logs for `Failed to record click event` /
-  `Failed to fetch preview for url=` (search `analytics_client`/
-  `preview_client` in the structured JSON logs).
-- `INTERNAL_API_KEY` matches across url-service, analytics-service, and
-  preview-service.
-- `ANALYTICS_SERVICE_URL`/`PREVIEW_SERVICE_URL` point at the right host —
-  inside docker-compose that's each service's alias on the shared
-  `url_shortener_gateway` network (`http://analytics:8000`,
-  `http://preview:8000` — **not** `http://analytics-service:8000` /
-  `http://preview-service:8000`, which are only resolvable from inside that
-  *other* service's own compose project, not from url-service's containers).
-  Confirm with `docker exec url_service_celery_worker python -c "import
-  socket; print(socket.gethostbyname('analytics'))"` (swap in `preview` for
-  the other one) — a `NameResolutionError` there means either the target
-  service isn't up, or url-service's `celery-worker` isn't joined to
-  `gateway-net` in its `docker-compose.yml`.
+### Click events not showing up in analytics-service
+url-service never blocks a redirect on analytics-service being reachable — it
+logs a warning and moves on. Check url-service's logs for
+`Failed to record click event`, and confirm `INTERNAL_API_KEY` matches between
+url-service and analytics-service, and `ANALYTICS_SERVICE_URL` points at the
+right host (`http://analytics:8000` — this service's name in the root
+`docker-compose.yml`).
 
 ### Geo-location (city/country) always null in analytics
 
@@ -1033,23 +772,146 @@ python manage.py migrate
 ### How It Works
 1. A user registers/logs in against **auth-service** and receives a JWT access + refresh token pair, with `user_id`, `email`, `is_staff`, and `tier` claims.
 2. The user submits a long URL to **url-service** with `Authorization: Bearer <access-token>`. url-service verifies the token's signature itself (shared `JWT_SECRET_KEY`) and reads `user_id`/`email`/`is_staff`/`tier` straight from its claims — it never queries a Users table, because it doesn't have one.
-3. url-service generates a unique short code (or validates a Premium/Admin-only `custom_alias`, and enforces the Free-tier 10-active-URL cap) and persists the `Url` row — owner, destination, alias, tags, expiry, etc. — in its own `url_db`, and caches the short_code/alias → URL/owner lookup in Redis (cache-first reads; a cache miss falls back to `url_db` and repopulates the cache; every update/delete evicts the cached entry). A Celery task (`fetch_url_preview_task`) is queued to ask **preview-service** for the destination page's title/description/favicon and fill in whichever of those three the owner didn't supply themselves — see [External Service Integration: URL Preview](#-external-service-integration-url-preview).
-4. Visiting `/{short_code}/` (or a `custom_alias`) on url-service resolves the URL (cache first, then `url_db`; 404 if inactive or past `expires_at`), atomically increments `click_count`, and redirects (302) immediately. A Celery task (`record_click_task`) is queued to geolocate the IP (via a free public API) and POST a click event to **analytics-service** (`short_code`, `owner_id`, referrer, user-agent, IP, city, country) — entirely off the request/response path, so a slow/unreachable analytics-service or geolocation API never delays the redirect, and a temporary outage is retried rather than dropped (see [Resilient HTTP Communication & Service Decoupling](#-resilient-http-communication--service-decoupling)).
+3. url-service generates a unique short code (or validates a Premium/Admin-only `custom_alias`, and enforces the Free-tier 10-active-URL cap) and persists the `Url` row — owner, destination, alias, tags, expiry, etc. — in its own `url_db`, and caches the short_code/alias → URL/owner lookup in Redis (cache-first reads; a cache miss falls back to `url_db` and repopulates the cache; every update/delete evicts the cached entry).
+4. Visiting `/{short_code}/` (or a `custom_alias`) on url-service resolves the URL (cache first, then `url_db`; 404 if inactive or past `expires_at`), atomically increments `click_count`, and redirects (302) immediately. A background thread then geolocates the IP (via a free public API) and POSTs a click event to **analytics-service** (`short_code`, `owner_id`, referrer, user-agent, IP, city, country) — entirely off the request/response path, so a slow/unreachable analytics-service or geolocation API never delays the redirect.
 5. analytics-service verifies that call came from url-service via a shared `INTERNAL_API_KEY` header, validates the payload, and hands the actual write off to a Celery worker (`track_click_task.delay(...)`) — write-behind, so the view itself never blocks on a database write. Owners can query aggregate click stats for their own short codes; Premium/Admin owners can also pull a time-series + geo-location breakdown.
-6. Updating, deleting, or listing a URL checks the same token's `is_staff` claim against that Url's `owner_id` — the owner or an admin may proceed, anyone else gets a 403 (reads stay public — see [Role-Based Access](#-role-based-access)); write requests are also throttled per the token's `tier` claim (see [Rate Limiting](#rate-limiting)). Deleting cascades to analytics-service's click history for that code via the same kind of queued, retried Celery task as click reporting (`delete_click_events_task`).
+6. Updating, deleting, or listing a URL checks the same token's `is_staff` claim against that Url's `owner_id` — the owner or an admin may proceed, anyone else gets a 403 (reads stay public — see [Role-Based Access](#-role-based-access)); write requests are also throttled per the token's `tier` claim (see [Rate Limiting](#rate-limiting)). Deleting cascades to analytics-service's click history for that code, via the same kind of background thread as click reporting.
 7. Once a day, url-service's Celery Beat scheduler fires `archive_expired_urls`: every `Url` past its `expires_at` gets `is_archived=True`, `is_active=False`, and is evicted from the cache.
 
 ### Key Design Decisions
 - **Database-per-service**: `auth_db`, `url_db`, `analytics_db` are separate Postgres containers — no service can reach into another's tables. `Url.owner_id` / `ClickEvent.owner_id` are plain denormalized ids, not foreign keys, since the referenced User row lives in a different service's database entirely (see the [Database Schema](#️-database-schema) caveat about resetting auth-service's database independently of the others).
 - **Stateless JWT verification**: url-service and analytics-service authenticate requests purely from the JWT's signature and claims (`url_shortener/security/authentication.py`, `analytics/authentication.py`) — no synchronous call back to auth-service on every request, and no duplicated Users table to keep in sync. Each service still keeps `django.contrib.auth` installed, but only for its own local admin-panel login, which is unrelated to this JWT-based API auth.
-- **Celery-queued cross-service calls, with retries and a circuit breaker**: every *cross-service* hop from url-service (click reporting + geolocation in `RedirectUrlView`, cascade-delete in `UrlDetailView.delete`, preview fetch in `UrlListCreateView.post`) is queued as a Celery task (`record_click_task`/`delete_click_events_task`/`fetch_url_preview_task` in `url_shortener/tasks.py`) rather than called synchronously — a durable unit of work on url-service's own Redis broker, decoupled from the downstream service's availability. Each client's HTTP session (`resilience.build_retrying_session`) retries a connection failure or 5xx with exponential backoff, and its circuit breaker (`resilience.CircuitBreaker`) fails fast after 5 consecutive failures instead of piling up doomed requests; if the whole attempt still fails, Celery retries the task itself with backoff (up to 5 times) — see [Resilient HTTP Communication & Service Decoupling](#-resilient-http-communication--service-decoupling). Once a call to analytics-service lands, its own database write is a separate write-behind step: `RecordClickView` validates the payload and hands it to `track_click_task.delay(...)`, a Celery task backed by its own Redis broker, so a slow/unreachable database never blocks *that* response either. url-service uses the same Celery/Redis infrastructure for one more, unrelated purpose — `archive_expired_urls`, a Celery Beat job that runs once a day.
-- **A minimal, stateless service for an inherently unreliable dependency**: fetching an arbitrary third-party page (for the URL preview feature) is the one thing in this platform that talks to hosts nobody controls, so it's isolated in its own service (preview-service) rather than done inline in url-service — a slow, malicious, or malformed response from someone else's website can only ever affect that one call, gated by its own timeout, retry, and circuit breaker, never url-service's own request handling. preview-service itself owns no models and needs no Postgres/Redis/Celery — SQLite is enough for the Django admin/auth tables it's stuck with by default.
+- **Background-thread cross-service calls, Celery for actual persistence**: the *cross-service* hop from url-service to analytics-service (click reporting + geolocation in `RedirectUrlView`, cascade-delete in `UrlDetailView.delete`) runs on a plain daemon `threading.Thread`, not Celery — it's a single fire-and-forget HTTP call, not a durable unit of work. Once that call lands, analytics-service's own database write is genuinely write-behind: `RecordClickView` validates the payload and hands it to `track_click_task.delay(...)`, a real Celery task backed by Redis, so a slow/unreachable database never blocks the response. url-service uses the same Celery/Redis infrastructure for a different purpose — `archive_expired_urls`, a Celery Beat job that runs once a day.
 - **Free geolocation, no fabricated data**: `ip-api.com` (no API key) is queried for city/country on each click; it correctly can't resolve private/local IPs (e.g. `127.0.0.1` in local dev), so those fields stay `null` rather than showing made-up locations.
 - **Role-based access via a JWT claim, not a lookup**: url-service enforces owner-or-admin checks (`url_shortener/api/permissions.py`'s `IsOwnerOrReadOnly`) purely from the `is_staff` claim already on the token — same stateless approach as authentication itself, no call back to auth-service to check a role.
 - **Tiered rate limiting via the same claim approach**: `TieredUserRateThrottle` (`url_shortener/api/throttling.py`) picks a request quota from the token's `tier` claim alone, with no lookup either.
-- **Structured JSON logging**: every service logs JSON lines to stdout (`logging_utils.JSONFormatter`), with `django.request` (500s) and `django.security` (security warnings) always routed there, plus app-level `logger.warning(...)` calls at points that matter for security monitoring — a rejected `X-Internal-Key` (`analytics/api/permissions.py`, `preview/permissions.py`), an unauthorized write attempt on someone else's URL (`url_shortener/api/permissions.py`).
-- **Health checks are real, not a static ping**: `GET /health/` actually queries the database (`SELECT 1`) — and, on url-service/analytics-service, pings Redis too — returning 503 (not 200) the moment either is unreachable — suitable for a container orchestrator's liveness/readiness probe.
+- **Structured JSON logging**: every service logs JSON lines to both stdout and its own `logs/logs.json` (each has its own `logging_utils.JSONFormatter`), with `django.request` (500s) and `django.security` (security warnings) always routed to both, plus app-level `logger.warning(...)` calls at points that matter for security monitoring — a failed login attempt (`accounts/api/views.py`), a rejected `X-Internal-Key` (`analytics/api/permissions.py`), an unauthorized write attempt on someone else's URL (`url_shortener/api/permissions.py`). `logs/` is gitignored on purpose (it's runtime output, not source) — each service's own `Config/settings.py` creates the directory on startup if it's missing, so a fresh checkout or Docker build never crashes for lacking it.
+- **Health checks are real, not a static ping**: `GET /health/` on every service actually queries the database (`SELECT 1`); url-service and analytics-service also ping Redis. Returns 503 (not 200) the moment any check fails — suitable for a container orchestrator's liveness/readiness probe.
 - **RESTful Design**: proper HTTP methods and status codes, one Swagger UI per service.
+
+## ⚡ Performance Tuning
+
+### Gunicorn
+
+Every service has its own `gunicorn.conf.py` (next to `manage.py`), used by
+both its `Dockerfile` and `services/docker-compose.yml`'s command for that
+service (`gunicorn -c gunicorn.conf.py Config.wsgi:application`). It reads
+its knobs from that service's own
+`.env` directly — gunicorn parses this file itself, before it ever imports
+`Config.wsgi`/`settings.py`, so `.env` is loaded here explicitly with
+`django-environ` rather than relying on Django to have done it first. Every
+knob below is optional; all have sensible defaults if left unset.
+
+| Variable                       | Default             | Effect                                                                                    |
+|---------------------------------|----------------------|--------------------------------------------------------------------------------------------|
+| `GUNICORN_WORKERS`               | `(2 x CPU cores) + 1` | Worker process count — the standard starting point; pin it explicitly on a CPU-quota'd container rather than trusting the host's full core count |
+| `GUNICORN_WORKER_CLASS`          | `gthread`            | `gthread` lets each worker serve several requests concurrently on threads — matters for url-service specifically, since a redirect spawns a background thread for click reporting |
+| `GUNICORN_THREADS`               | `4`                  | Threads per worker (only used by `gthread`)                                               |
+| `GUNICORN_TIMEOUT`               | `30`                 | Seconds before a silent worker is killed and restarted                                    |
+| `GUNICORN_GRACEFUL_TIMEOUT`      | `30`                 | Seconds a worker gets to finish in-flight requests during a graceful restart              |
+| `GUNICORN_KEEPALIVE`             | `5`                  | Seconds to hold a keep-alive connection open waiting for the next request                 |
+| `GUNICORN_MAX_REQUESTS`          | `1000`               | Requests a worker handles before it's recycled — bounds slow memory growth                |
+| `GUNICORN_MAX_REQUESTS_JITTER`   | `100`                | Random jitter on the above, so workers don't all recycle at the same instant              |
+| `GUNICORN_PRELOAD_APP`           | `true`               | Loads the app once in the master before forking workers, sharing code pages between them; `gunicorn.conf.py`'s `post_fork` hook closes the inherited DB connection so each worker opens its own |
+| `GUNICORN_LOG_LEVEL`             | `info`               | Gunicorn's own log level (separate from Django's `LOGGING`)                                |
+
+`bind` itself is **not** configurable this way — it's hardcoded to
+`0.0.0.0:8000` in every service's `gunicorn.conf.py`, since the root
+`docker-compose.yml` maps each service's host port (`8001`/`8002`/`8003`) to
+container port `8000`; that's a different thing from `PORT` in `.env`,
+which only controls what `manage.py runserver` binds to locally, outside
+Docker.
+
+Gunicorn's own access log (`accesslog = "-"`, i.e. stdout) uses a format
+that includes `%(D)s` — the request time in microseconds — so per-request
+latency is visible in plain container logs without turning on profiling at
+all.
+
+### Profiling
+
+Every service's `profiling.py` (`accounts/profiling.py`,
+`url_shortener/profiling.py`, `analytics/profiling.py`) provides profiling
+at two different granularities, both gated the same way — off unless
+**both** are true:
+
+1. `ENABLE_PROFILING=True` in that service's `.env` (`settings.PROFILING_ENABLED`)
+2. Something explicitly asks for it (a request query param, or a decorator on the function itself)
+
+#### Whole request: `ProfilingMiddleware`
+
+Built on the standard library's `cProfile` — no extra dependency. Profiles
+one request end-to-end when it carries `?profile=1`:
+
+```bash
+# Inline: top 30 stack frames by cumulative time, human-readable
+curl "http://localhost:8002/api/v1/urls/?profile=1&format=text"
+
+# File dump: full stats written to logs/profiles/, for offline inspection
+curl "http://localhost:8002/api/v1/urls/?profile=1"
+pip install snakeviz
+snakeviz logs/profiles/api_v1_urls-<timestamp>.prof
+```
+
+Use this to see the whole call graph for one HTTP request, including
+Django/DRF/middleware overhead outside your own code.
+
+#### One function: `@profile_function` and `@profile_lines`
+
+For measuring a *specific* function instead of a whole request — apply
+either decorator directly to it:
+
+- **`@profile_function`** — wraps it with `cProfile`, same as the
+  middleware but scoped to just that function's own call graph.
+- **`@profile_lines`** — wraps it with
+  [`line_profiler`](https://github.com/pyutils/line_profiler) (a
+  dependency in every service's `requirements.txt`), timing every
+  individual *line* inside the function — the only way to see, e.g., that
+  one specific line inside a function is 98% of its runtime, which
+  `cProfile` alone can't tell you since it only measures at function
+  granularity.
+
+Both append a timestamped, human-readable entry to `logs/profiling.log`
+every time the decorated function is called — no return-value change, no
+per-call configuration:
+
+```python
+from url_shortener.profiling import profile_function, profile_lines
+
+@profile_lines
+def _resolve_short_code(short_code):
+    ...
+
+class RedirectUrlView(APIView):
+    @profile_function
+    def get(self, request, short_code):
+        ...
+```
+
+A handful of hot-path functions already carry one or the other as a
+working example: `LoginView.post` / `_tokens_for_user` (auth-service),
+`RedirectUrlView.get` / `_resolve_short_code` (url-service), and
+`DetailedAnalyticsView.get` / `UrlClickStatsView.get` (analytics-service).
+Running that service's test suite with `ENABLE_PROFILING=true` is enough to
+see real entries land in `logs/profiling.log` — e.g. `_tokens_for_user`'s
+line profile shows JWT `str(access)` serialization as ~98% of that
+function's time, and `LoginView.post`'s function profile shows
+`pbkdf2_hmac` (password hashing) dominating the login request overall.
+
+Both decorators are a no-op (a plain passthrough call, no profiler
+attached) whenever `PROFILING_ENABLED` is off, so leaving them in the
+codebase costs nothing in production.
+
+`logs/profiles/` and `logs/profiling.log` both sit under the same
+gitignored `logs/` directory as `logs.json` (see
+[Structured Logging](#-development-notes)) — runtime output, not source,
+created on demand.
+
+**Never leave `ENABLE_PROFILING=True` on in a publicly reachable
+production environment**: a profiled request or function call runs
+measurably slower (every call, or every line, is intercepted), and letting
+untrusted clients trigger one on demand is a cheap way to degrade the
+service. Turn it on only where traffic is already trusted/internal, and
+only for as long as you're actively investigating something.
 
 ## 🚢 Production Deployment
 
@@ -1057,17 +919,18 @@ For production deployment:
 
 1. Update each service's own `.env` with production values:
    - Set `DEBUG=False`
-   - Generate strong, random values for `JWT_SECRET_KEY` and `SECRET_KEY` in every service, and `INTERNAL_API_KEY` in url-service/analytics-service/preview-service — keep the shared ones (`JWT_SECRET_KEY` across auth/url/analytics, `INTERNAL_API_KEY` across url/analytics/preview) identical across the services that share them
+   - Generate strong, random values for `JWT_SECRET_KEY` and `SECRET_KEY` in every service, `INTERNAL_API_KEY` in url-service/analytics-service, and `INTERNAL_SERVICE_TOKEN` in auth-service + `gateway/.env` — keep each shared value identical across the services that share it
    - Configure `ALLOWED_HOSTS` per environment
-   - Set `CORS_ALLOW_ALL_ORIGINS=False` and list real origins in `CORS_ALLOWED_ORIGINS` on every service a frontend calls (auth/url/analytics) — see [CORS for a Frontend](#-api-gateway)
+   - Set `CORS_ALLOW_ALL_ORIGINS=False` and list real origins in `CORS_ALLOWED_ORIGINS` (each service's own CORS setting is a fallback for direct/debug access — the gateway's own `CORS_ALLOWED_ORIGIN` in `gateway/.env` is what actually governs normal client traffic; see [API Gateway](#-api-gateway))
+   - Leave `ENABLE_PROFILING` unset (or `False`) unless you're actively debugging — see [Performance Tuning](#-performance-tuning)
 
-2. Each service is served via Gunicorn behind its own reverse-proxy route — or behind the API gateway (`gateway/`, see [API Gateway](#-api-gateway)) for a single client-facing entry point with centralized auth and rate limiting. preview-service is never exposed publicly either way — it's reachable only from url-service, on the internal `url_shortener_gateway` network
+2. All client traffic should go through the gateway (`gateway/`) — tune `GUNICORN_WORKERS`/`GUNICORN_THREADS`/etc. in each service's own `.env` for the target hardware, see [Performance Tuning](#-performance-tuning); don't expose each service's own host port (`8001`-`8003`) beyond `127.0.0.1`/local debugging
 
-3. url-service and analytics-service each need their Celery worker running continuously (`celery -A Config worker -l info`) for click/preview tracking and archiving to actually happen — `docker-compose.yml`'s `celery-worker` service covers this; url-service also needs `celery-beat` (`celery -A Config beat -l info`) for the nightly archive job to fire at all. preview-service needs no worker of its own — it has no Celery tasks, only a plain synchronous endpoint
+3. url-service and analytics-service each need their Celery worker running continuously (`celery -A Config worker -l info`) for click tracking / archiving to actually happen — `services/docker-compose.yml`'s `url-celery-worker`/`analytics-celery-worker` services cover this; url-service also needs `url-celery-beat` (`celery -A Config beat -l info`) for the nightly archive job to fire at all
 
-4. Point your container orchestrator's liveness/readiness probes at each service's `GET /health/` — it fails (503) the moment that service's database (or, on url-service/analytics-service, Redis) is unreachable
+4. Point your container orchestrator's liveness/readiness probes at each service's `GET /health/` — it fails (503) the moment that service's database (or, for url-service/analytics-service, Redis) is unreachable; the gateway's own `GET /health` only checks that nginx itself is up
 
-5. Ensure the `auth_postgres_data`, `url_postgres_data`, `analytics_postgres_data`, `redis_data`, and `analytics_redis_data` volumes are backed up appropriately — preview-service has no volume worth backing up, since it stores nothing
+5. Ensure the `auth_postgres_data`, `url_postgres_data`, `analytics_postgres_data`, `redis_data`, and `analytics_redis_data` volumes are backed up appropriately
 
 ## 📄 License
 
@@ -1079,4 +942,4 @@ Created as Lab 1: URL Shortener Microservice — split into auth/url/analytics m
 
 ---
 
-**Happy URL Shortening! 🎉**
+
