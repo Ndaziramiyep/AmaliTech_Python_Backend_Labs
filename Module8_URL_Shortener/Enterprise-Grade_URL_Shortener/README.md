@@ -207,6 +207,73 @@ sequenceDiagram
     end
 ```
 
+### 4. Detailed Analytics (Premium/Admin)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant AS as analytics-service
+    participant ADB as analytics_db
+
+    C->>AS: GET /api/v1/analytics/{short_code}/ (Bearer JWT)
+    AS->>AS: verify JWT locally, read tier claim
+    alt tier == Free
+        AS-->>C: 403 Forbidden
+    else Premium / Admin
+        AS->>ADB: aggregate daily time-series + city/country breakdown
+        ADB-->>AS: rows
+        AS-->>C: 200 {click_count, time_series[], geo_breakdown[]}
+    end
+```
+
+### 5. Delete a URL (cascades to analytics)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant U as url-service
+    participant DB as url_db
+    participant R as Redis
+    participant T as Background Thread
+    participant AS as analytics-service
+    participant ADB as analytics_db
+
+    C->>U: DELETE /api/v1/urls/{short_code}/ (Bearer JWT)
+    U->>U: IsOwnerOrReadOnly check (owner or is_staff)
+    alt not owner and not admin
+        U->>U: logger.warning("unauthorized write attempt")
+        U-->>C: 403 Forbidden
+    else authorized
+        U->>DB: DELETE Url row
+        U->>R: evict cached entry
+        U-->>C: 204 No Content
+        U->>T: spawn(cascade_delete) — fire-and-forget
+        T->>AS: DELETE /api/v1/events/click/ (X-Internal-Key) {short_codes: [...]}
+        AS->>ADB: DELETE ClickEvent WHERE short_code IN (...)
+    end
+```
+
+### 6. Nightly Archive Job (Celery Beat)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Beat as Celery Beat (url-service)
+    participant W as Celery Worker
+    participant DB as url_db
+    participant R as Redis
+
+    Beat->>W: trigger archive_expired_urls (once every 24h)
+    W->>DB: SELECT Url WHERE expires_at < now() AND is_archived = False
+    DB-->>W: expired Url rows
+    loop each expired Url
+        W->>DB: UPDATE is_archived=True, is_active=False, archived_at=now()
+        W->>R: evict cached entry
+    end
+```
+
 ## 🚀 Features
 
 - **JWT Authentication** (auth-service): register/login with email + password; access & refresh tokens carry custom `email`, `is_staff`, and `tier` claims
