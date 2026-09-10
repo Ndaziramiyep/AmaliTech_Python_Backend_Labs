@@ -40,7 +40,8 @@ together, by design.
 
 Three independently deployable services, each with its own database — no
 API gateway, no shared Users table. One diagram, one end-to-end request
-flow through the four main components (client + the three services):
+flow through the six main components: client, the three services, and the
+database/cache each service keeps to itself.
 
 ```mermaid
 sequenceDiagram
@@ -49,36 +50,49 @@ sequenceDiagram
     participant A as auth-service
     participant U as url-service
     participant AN as analytics-service
+    participant DB as Database<br/>(one per service)
+    participant R as Redis<br/>(one per service)
 
     Note over C,A: 1 · Authenticate
     C->>A: POST /api/v1/auth/register/ (or /login/)
-    A->>A: validate credentials, issue JWT
+    A->>DB: INSERT / SELECT User (auth_db)
+    DB-->>A: User row
     A-->>C: access + refresh token<br/>(claims: user_id, email, is_staff, tier)
 
     Note over C,U: 2 · Create a short URL
     C->>U: POST /api/v1/urls/ (Bearer JWT)
     U->>U: verify JWT locally — shared secret,<br/>no call back to auth-service
+    U->>DB: INSERT Url (url_db)
+    U->>R: SET short_code → Url (cache warm)
     U-->>C: 201 { short_url, short_link, ... }
 
     Note over C,U: 3 · Redirect (public, no auth)
     C->>U: GET /{short_code}/
-    U->>U: resolve URL, increment click_count
+    U->>R: GET short_code (cache-first)
+    R-->>U: cached Url (falls back to url_db on a miss)
+    U->>DB: UPDATE click_count (url_db)
     U-->>C: 302 → original_url
 
     U->>AN: POST /api/v1/events/click/ (X-Internal-Key)<br/>fire-and-forget, off the request path
-    AN->>AN: enqueue write via Celery (write-behind)
+    AN->>R: enqueue via Celery (broker)
+    AN->>DB: INSERT ClickEvent (analytics_db, write-behind)
 
     Note over C,AN: 4 · Query analytics
     C->>AN: GET /api/v1/analytics/... (Bearer JWT)
+    AN->>DB: read ClickEvent rows (analytics_db)
+    DB-->>AN: rows
     AN-->>C: click stats / time-series
 ```
 
-**Reading it**: auth-service is only ever called once, at login — url-service
-and analytics-service both verify the JWT's signature themselves and never
-call back to it. The click-tracking call from url-service to
-analytics-service is the one runtime hop between services, and it's
-fire-and-forget: it runs after the 302 has already gone back to the client,
-so a slow or unreachable analytics-service never delays a redirect.
+**Reading it**: `Database` and `Redis` each stand in for three (resp. two)
+separate instances — every message names which one (`auth_db`, `url_db`,
+`analytics_db`) — there is no shared database or cache anywhere in the
+system. auth-service is only ever called once, at login — url-service and
+analytics-service both verify the JWT's signature themselves and never call
+back to it. The click-tracking call from url-service to analytics-service is
+the one runtime hop between services, and it's fire-and-forget: it runs
+after the 302 has already gone back to the client, so a slow or unreachable
+analytics-service never delays a redirect.
 
 ## 🚀 Features
 
