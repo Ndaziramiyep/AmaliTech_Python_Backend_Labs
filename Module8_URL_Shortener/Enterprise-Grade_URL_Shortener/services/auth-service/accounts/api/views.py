@@ -87,6 +87,7 @@ class LoginView(APIView):
         responses={200: TokenResponseSerializer},
         description="Log in with email and password to receive JWT access and refresh tokens.",
     )
+    @profile_function
     def post(self, request):
         """Validates login credentials and returns JWT tokens for the authenticated user."""
         serializer = LoginSerializer(data=request.data)
