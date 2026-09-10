@@ -294,6 +294,7 @@ class RedirectUrlView(APIView):
             "correctly with a 302."
         ),
     )
+    @profile_function
     def get(self, request, short_code):
         """Resolves the short code, counts the click, and redirects — reporting to analytics-service happens in the background, never delaying the redirect."""
         result = _resolve_short_code(short_code)
