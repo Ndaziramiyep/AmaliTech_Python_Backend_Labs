@@ -5,6 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
+benchmarks
 
 # Distribution / packaging
 .Python
@@ -64,11 +65,18 @@ pytest_cache/
 
 # Docker
 *.env
+.env.local
 docker-compose.override.yml
 *.log
 *.pid
 tmp/
 .docker/
+
+# Application logs
+logs/
+
+# Celery Beat (local runs of `celery -A Config beat`)
+celerybeat-schedule*
 
 # VSCode
 .vscode/
