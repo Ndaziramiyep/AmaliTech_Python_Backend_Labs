@@ -146,6 +146,10 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 
 # Logging Configuration — structured JSON to stdout and to logs/logs.json;
 # 500s (django.request) and security warnings (django.security) are always captured.
+# FileHandler doesn't create missing parent dirs, and logs/ is gitignored, so
+# a fresh checkout or image build has to have it created here first.
+(BASE_DIR / "logs").mkdir(exist_ok=True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
