@@ -22,6 +22,7 @@ from url_shortener.api.throttling import TieredUserRateThrottle
 from url_shortener.caching import cache_key, cache_url, identifiers_for, invalidate_cache
 from url_shortener.clients import analytics_client
 from url_shortener.models import Tag, Url
+from url_shortener.profiling import profile_function, profile_lines
 
 SHORT_CODE_LENGTH = 6
 SHORT_CODE_ALPHABET = string.ascii_letters + string.digits
@@ -62,6 +63,7 @@ def _generate_unique_short_code():
             return code
 
 
+@profile_lines
 def _resolve_short_code(short_code):
     """Looks up a short code's URL data (cache first, then the database), or None if inactive/expired/missing."""
     cached = cache.get(cache_key(short_code))
