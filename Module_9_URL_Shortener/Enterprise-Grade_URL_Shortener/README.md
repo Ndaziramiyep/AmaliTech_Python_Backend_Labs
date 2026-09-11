@@ -105,15 +105,17 @@ sequenceDiagram
     AN-->>C: click stats / time-series
 ```
 
-**Reading it**: `Database` and `Redis` each stand in for three (resp. two)
-separate instances — every message names which one (`auth_db`, `url_db`,
-`analytics_db`) — there is no shared database or cache anywhere in the
-system. auth-service is only ever called once, at login — url-service and
-analytics-service both verify the JWT's signature themselves and never call
-back to it. The click-tracking call from url-service to analytics-service is
-the one runtime hop between services, and it's fire-and-forget: it runs
-after the 302 has already gone back to the client, so a slow or unreachable
-analytics-service never delays a redirect.
+**Reading it**: `Database` and `Redis` each stand in for four separate
+instances — every message names which one (`auth_db`, `url_db`,
+`analytics_db`, `url_preview_db`) — there is no shared database or cache
+anywhere in the system. auth-service is only ever called once, at login —
+url-service and analytics-service both verify the JWT's signature themselves
+and never call back to it. Both cross-service hops from url-service — click
+tracking to analytics-service, and the preview fetch to url-preview — are
+fire-and-forget: the click-tracking call runs after the 302 has already gone
+back to the client, and the preview fetch runs as a Celery task queued right
+after the 201 response, so a slow or unreachable analytics-service/url-preview
+never delays a redirect or a URL-creation response.
 
 ## 🚪 API Gateway
 
