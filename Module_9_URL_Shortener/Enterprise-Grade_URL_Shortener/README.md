@@ -65,6 +65,7 @@ sequenceDiagram
     participant A as auth-service
     participant U as url-service
     participant AN as analytics-service
+    participant P as url-preview
     participant DB as Database<br/>(one per service)
     participant R as Redis<br/>(one per service)
 
@@ -80,6 +81,11 @@ sequenceDiagram
     U->>DB: INSERT Url (url_db)
     U->>R: SET short_code → Url (cache warm)
     U-->>C: 201 { short_url, short_link, ... }
+
+    U->>P: POST /api/v1/internal/preview/ (X-Internal-Token)<br/>fire-and-forget Celery task, off the request path
+    P->>P: SSRF guard, cache check,<br/>circuit breaker, retry/backoff fetch
+    P-->>U: { title, description, favicon }
+    U->>DB: UPDATE Url — only fields left unset by the owner (url_db)
 
     Note over C,U: 3 · Redirect (public, no auth)
     C->>U: GET /{short_code}/
